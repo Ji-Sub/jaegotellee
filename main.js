@@ -9,66 +9,66 @@
 // ─────────────────────────────────────────────
 // CONFIG
 // ─────────────────────────────────────────────
-const SUPABASE_URL = 'YOUR_SUPABASE_URL';
-const SUPABASE_ANON_KEY = 'YOUR_SUPABASE_ANON_KEY';
+const SUPABASE_URL = 'https://ohjmvkmuhuoiuguetmyp.supabase.co';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oam12a211aHVvaXVndWV0bXlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0ODczMzksImV4cCI6MjA4ODI4NzMzOX0.R0bdr5_ucXIJWRaqIlRit3sQdg2wQhqnb-nNtelz-iY';
 
 // ─────────────────────────────────────────────
 // CATEGORIES
 // ─────────────────────────────────────────────
 const CATEGORIES = [
-    { id: 'all', label: '모든글', icon: '📋', subs: [] },
-    { id: 'hotdeal', label: '핫딜 모음', icon: '🔥', subs: [] },
-    {
-        id: 'clearance', label: '재고털이', icon: '🏷️',
-        subs: [
-            { id: 'meat', label: '육류' },
-            { id: 'processed', label: '육가공' },
-            { id: 'drink', label: '음료' },
-            { id: 'vegetable', label: '채소' },
-            { id: 'fish', label: '생선' },
-            { id: 'fruit', label: '과일' },
-        ]
-    },
-    { id: 'supplement', label: '영양제', icon: '💊', subs: [] },
-    { id: 'unique', label: '신박한 아이템', icon: '✨', subs: [] },
-    {
-        id: 'electronics', label: '전자기기', icon: '💻',
-        subs: [
-            { id: 'keyboard', label: '키보드' },
-            { id: 'mouse', label: '마우스' },
-        ]
-    },
+  { id: 'all', label: '모든글', icon: '📋', subs: [] },
+  { id: 'hotdeal', label: '핫딜 모음', icon: '🔥', subs: [] },
+  {
+    id: 'clearance', label: '재고털이', icon: '🏷️',
+    subs: [
+      { id: 'meat', label: '육류' },
+      { id: 'processed', label: '육가공' },
+      { id: 'drink', label: '음료' },
+      { id: 'vegetable', label: '채소' },
+      { id: 'fish', label: '생선' },
+      { id: 'fruit', label: '과일' },
+    ]
+  },
+  { id: 'supplement', label: '영양제', icon: '💊', subs: [] },
+  { id: 'unique', label: '신박한 아이템', icon: '✨', subs: [] },
+  {
+    id: 'electronics', label: '전자기기', icon: '💻',
+    subs: [
+      { id: 'keyboard', label: '키보드' },
+      { id: 'mouse', label: '마우스' },
+    ]
+  },
 ];
 
 // ─────────────────────────────────────────────
 // DEMO DATA  (shown before Supabase is connected)
 // ─────────────────────────────────────────────
 const DEMO_POSTS = [
-    { id: 1, title: '한우 등심 1++ 재고 대방출', description: '냉동 한우 등심 1++ 등급 정육 재고 대량 방출합니다. 마트 납품 후 남은 물량이라 신선도 보장. 소분 가능합니다.', price: '35,000원/kg', image_url: null, category: 'meat', views: 1284, comments_count: 23, approved: true, is_hot: true },
-    { id: 2, title: '제주 감귤 10kg 박스 — 시즌 마감 특가', description: '이번 시즌 마지막 감귤입니다. 산지 직송, 당도 높은 제주산 감귤 10kg 박스.', price: '18,000원', image_url: null, category: 'fruit', views: 567, comments_count: 8, approved: true, is_hot: false },
-    { id: 3, title: '로지텍 MX Master 3 마우스 재고 처분', description: '리뉴얼로 인한 구모델 재고 처분. 정품 박스 미개봉. 공홈 대비 50% 할인!', price: '55,000원', image_url: null, category: 'mouse', views: 3210, comments_count: 45, approved: true, is_hot: true },
-    { id: 4, title: '단백질 보충제 창고 정리 30% 할인', description: '유통기한 1년 이상 남은 단백질 보충제 대량 방출. 초코·바닐라 각 1kg.', price: '25,000원', image_url: null, category: 'supplement', views: 890, comments_count: 12, approved: true, is_hot: false },
-    { id: 5, title: '수제 햄 & 소시지 박스세트 특가', description: '소량 생산 공방의 수제 햄/소시지 재고. 방부제 없는 건강한 제품, 냉동 보관.', price: '32,000원', image_url: null, category: 'processed', views: 420, comments_count: 6, approved: true, is_hot: false },
-    { id: 6, title: '키크론 K2 키보드 물량 처분 (적축)', description: '리뉴얼 전 구모델 키크론 K2 적축 물량 대방출. 개봉 전 새제품. 맥/윈도우 호환.', price: '79,000원', image_url: null, category: 'keyboard', views: 1875, comments_count: 34, approved: true, is_hot: true },
+  { id: 1, title: '한우 등심 1++ 재고 대방출', description: '냉동 한우 등심 1++ 등급 정육 재고 대량 방출합니다. 마트 납품 후 남은 물량이라 신선도 보장. 소분 가능합니다.', price: '35,000원/kg', image_url: null, category: 'meat', views: 1284, comments_count: 23, approved: true, is_hot: true },
+  { id: 2, title: '제주 감귤 10kg 박스 — 시즌 마감 특가', description: '이번 시즌 마지막 감귤입니다. 산지 직송, 당도 높은 제주산 감귤 10kg 박스.', price: '18,000원', image_url: null, category: 'fruit', views: 567, comments_count: 8, approved: true, is_hot: false },
+  { id: 3, title: '로지텍 MX Master 3 마우스 재고 처분', description: '리뉴얼로 인한 구모델 재고 처분. 정품 박스 미개봉. 공홈 대비 50% 할인!', price: '55,000원', image_url: null, category: 'mouse', views: 3210, comments_count: 45, approved: true, is_hot: true },
+  { id: 4, title: '단백질 보충제 창고 정리 30% 할인', description: '유통기한 1년 이상 남은 단백질 보충제 대량 방출. 초코·바닐라 각 1kg.', price: '25,000원', image_url: null, category: 'supplement', views: 890, comments_count: 12, approved: true, is_hot: false },
+  { id: 5, title: '수제 햄 & 소시지 박스세트 특가', description: '소량 생산 공방의 수제 햄/소시지 재고. 방부제 없는 건강한 제품, 냉동 보관.', price: '32,000원', image_url: null, category: 'processed', views: 420, comments_count: 6, approved: true, is_hot: false },
+  { id: 6, title: '키크론 K2 키보드 물량 처분 (적축)', description: '리뉴얼 전 구모델 키크론 K2 적축 물량 대방출. 개봉 전 새제품. 맥/윈도우 호환.', price: '79,000원', image_url: null, category: 'keyboard', views: 1875, comments_count: 34, approved: true, is_hot: true },
 ];
 
 const DEMO_COMMENTS = [
-    { id: 1, content: '가격 대비 정말 좋네요! 바로 구매했습니다.', created_at: new Date(Date.now() - 3600000).toISOString(), users: { email: 'buyer01@email.com' } },
-    { id: 2, content: '배송은 얼마나 걸리나요?', created_at: new Date(Date.now() - 1800000).toISOString(), users: { email: 'user99@email.com' } },
+  { id: 1, content: '가격 대비 정말 좋네요! 바로 구매했습니다.', created_at: new Date(Date.now() - 3600000).toISOString(), users: { email: 'buyer01@email.com' } },
+  { id: 2, content: '배송은 얼마나 걸리나요?', created_at: new Date(Date.now() - 1800000).toISOString(), users: { email: 'user99@email.com' } },
 ];
 
 // ─────────────────────────────────────────────
 // STATE
 // ─────────────────────────────────────────────
 const S = {
-    user: null,
-    role: null,   // 'user' | 'seller' | 'admin'
-    view: 'feed', // 'feed' | 'detail' | 'admin' | 'apply' | 'create'
-    postId: null,
-    category: 'all',
-    adminTab: 'sellers',  // 'sellers' | 'posts' | 'all'
-    expanded: new Set(['clearance', 'electronics']),
-    isDemo: false,
+  user: null,
+  role: null,   // 'user' | 'seller' | 'admin'
+  view: 'feed', // 'feed' | 'detail' | 'admin' | 'apply' | 'create'
+  postId: null,
+  category: 'all',
+  adminTab: 'sellers',  // 'sellers' | 'posts' | 'all'
+  expanded: new Set(['clearance', 'electronics']),
+  isDemo: false,
 };
 
 // ─────────────────────────────────────────────
@@ -76,178 +76,178 @@ const S = {
 // ─────────────────────────────────────────────
 let sb = null;
 try {
-    if (SUPABASE_URL !== 'YOUR_SUPABASE_URL') {
-        sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    } else {
-        S.isDemo = true;
-    }
+  if (SUPABASE_URL !== 'YOUR_SUPABASE_URL') {
+    sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  } else {
+    S.isDemo = true;
+  }
 } catch (_) { S.isDemo = true; }
 
 // ─────────────────────────────────────────────
 // UTILS
 // ─────────────────────────────────────────────
 function esc(s) {
-    return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 function getCatLabel(id) {
-    for (const c of CATEGORIES) {
-        if (c.id === id) return c.label;
-        for (const s of c.subs) if (s.id === id) return s.label;
-    }
-    return id;
+  for (const c of CATEGORIES) {
+    if (c.id === id) return c.label;
+    for (const s of c.subs) if (s.id === id) return s.label;
+  }
+  return id;
 }
 function getCatEmoji(id) {
-    const map = {
-        meat: '🥩', processed: '🌭', drink: '🥤', vegetable: '🥦', fish: '🐟', fruit: '🍊',
-        supplement: '💊', unique: '✨', keyboard: '⌨️', mouse: '🖱️', electronics: '💻',
-        hotdeal: '🔥', clearance: '🏷️', all: '📋'
-    };
-    return map[id] || '📦';
+  const map = {
+    meat: '🥩', processed: '🌭', drink: '🥤', vegetable: '🥦', fish: '🐟', fruit: '🍊',
+    supplement: '💊', unique: '✨', keyboard: '⌨️', mouse: '🖱️', electronics: '💻',
+    hotdeal: '🔥', clearance: '🏷️', all: '📋'
+  };
+  return map[id] || '📦';
 }
 function formatDate(iso) {
-    if (!iso) return '';
-    const d = new Date(iso);
-    return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 }
 let _toastTimer;
 function showToast(msg) {
-    const el = document.getElementById('toast');
-    el.textContent = msg;
-    el.classList.add('show');
-    clearTimeout(_toastTimer);
-    _toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => el.classList.remove('show'), 2800);
 }
 
 // ─────────────────────────────────────────────
 // AUTH
 // ─────────────────────────────────────────────
 async function loadRole() {
-    if (!sb || !S.user) return;
-    const { data } = await sb.from('users').select('role').eq('id', S.user.id).single();
-    S.role = data?.role || 'user';
+  if (!sb || !S.user) return;
+  const { data } = await sb.from('users').select('role').eq('id', S.user.id).single();
+  S.role = data?.role || 'user';
 }
 
 async function doLogin(email, password) {
-    if (S.isDemo) { showToast('⚠️ 데모 모드 — Supabase를 먼저 연결해 주세요'); return; }
-    const { error } = await sb.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-    closeModal();
-    showToast('로그인되었습니다 👋');
-    renderNav();
+  if (S.isDemo) { showToast('⚠️ 데모 모드 — Supabase를 먼저 연결해 주세요'); return; }
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  closeModal();
+  showToast('로그인되었습니다 👋');
+  renderNav();
 }
 
 async function doSignup(email, password) {
-    if (S.isDemo) { showToast('⚠️ 데모 모드 — Supabase를 먼저 연결해 주세요'); return; }
-    const { data, error } = await sb.auth.signUp({ email, password });
-    if (error) throw error;
-    if (data.user) {
-        await sb.from('users').upsert({ id: data.user.id, email, role: 'user' });
-    }
-    closeModal();
-    showToast('가입 완료! 이메일을 확인해 주세요.');
+  if (S.isDemo) { showToast('⚠️ 데모 모드 — Supabase를 먼저 연결해 주세요'); return; }
+  const { data, error } = await sb.auth.signUp({ email, password });
+  if (error) throw error;
+  if (data.user) {
+    await sb.from('users').upsert({ id: data.user.id, email, role: 'user' });
+  }
+  closeModal();
+  showToast('가입 완료! 이메일을 확인해 주세요.');
 }
 
 async function doLogout() {
-    if (sb) await sb.auth.signOut();
-    S.user = null; S.role = null;
-    showToast('로그아웃되었습니다');
-    renderNav();
-    navigateTo('feed');
+  if (sb) await sb.auth.signOut();
+  S.user = null; S.role = null;
+  showToast('로그아웃되었습니다');
+  renderNav();
+  navigateTo('feed');
 }
 
 // ─────────────────────────────────────────────
 // DATA
 // ─────────────────────────────────────────────
 async function fetchPosts(category) {
-    if (S.isDemo) {
-        let p = [...DEMO_POSTS];
-        if (category === 'hotdeal') p = p.filter(x => x.is_hot);
-        else if (category !== 'all') p = p.filter(x => x.category === category);
-        return p;
-    }
-    let q = sb.from('posts').select('*').eq('approved', true).order('created_at', { ascending: false });
-    if (category === 'hotdeal') q = q.eq('is_hot', true);
-    else if (category !== 'all') q = q.eq('category', category);
-    const { data } = await q;
-    return data || [];
+  if (S.isDemo) {
+    let p = [...DEMO_POSTS];
+    if (category === 'hotdeal') p = p.filter(x => x.is_hot);
+    else if (category !== 'all') p = p.filter(x => x.category === category);
+    return p;
+  }
+  let q = sb.from('posts').select('*').eq('approved', true).order('created_at', { ascending: false });
+  if (category === 'hotdeal') q = q.eq('is_hot', true);
+  else if (category !== 'all') q = q.eq('category', category);
+  const { data } = await q;
+  return data || [];
 }
 
 async function fetchPost(id) {
-    if (S.isDemo) return DEMO_POSTS.find(p => p.id == id) || null;
-    await sb.rpc('increment_views', { post_id: id }).catch(() => { });
-    const { data } = await sb.from('posts').select('*').eq('id', id).single();
-    return data;
+  if (S.isDemo) return DEMO_POSTS.find(p => p.id == id) || null;
+  await sb.rpc('increment_views', { post_id: id }).catch(() => { });
+  const { data } = await sb.from('posts').select('*').eq('id', id).single();
+  return data;
 }
 
 async function fetchComments(postId) {
-    if (S.isDemo) return DEMO_COMMENTS;
-    const { data } = await sb.from('comments')
-        .select('*, users(email)')
-        .eq('post_id', postId)
-        .order('created_at', { ascending: true });
-    return data || [];
+  if (S.isDemo) return DEMO_COMMENTS;
+  const { data } = await sb.from('comments')
+    .select('*, users(email)')
+    .eq('post_id', postId)
+    .order('created_at', { ascending: true });
+  return data || [];
 }
 
 async function addComment(postId, content) {
-    if (!S.user) { showLoginModal(); return; }
-    const { error } = await sb.from('comments').insert({ post_id: postId, user_id: S.user.id, content });
-    if (error) throw error;
-    await sb.rpc('increment_comments', { post_id: postId }).catch(() => { });
+  if (!S.user) { showLoginModal(); return; }
+  const { error } = await sb.from('comments').insert({ post_id: postId, user_id: S.user.id, content });
+  if (error) throw error;
+  await sb.rpc('increment_comments', { post_id: postId }).catch(() => { });
 }
 
 async function fetchPendingSellers() {
-    if (S.isDemo) return [{ id: 'demo', user_id: 'u1', status: 'pending', created_at: new Date().toISOString(), users: { email: 'demo_seller@test.com' } }];
-    const { data } = await sb.from('seller_applications').select('*, users(email)').eq('status', 'pending').order('created_at', { ascending: false });
-    return data || [];
+  if (S.isDemo) return [{ id: 'demo', user_id: 'u1', status: 'pending', created_at: new Date().toISOString(), users: { email: 'demo_seller@test.com' } }];
+  const { data } = await sb.from('seller_applications').select('*, users(email)').eq('status', 'pending').order('created_at', { ascending: false });
+  return data || [];
 }
 
 async function fetchPendingPosts() {
-    if (S.isDemo) return [];
-    const { data } = await sb.from('posts').select('*').eq('approved', false).order('created_at', { ascending: false });
-    return data || [];
+  if (S.isDemo) return [];
+  const { data } = await sb.from('posts').select('*').eq('approved', false).order('created_at', { ascending: false });
+  return data || [];
 }
 
 async function fetchAllPostsAdmin() {
-    if (S.isDemo) return DEMO_POSTS;
-    const { data } = await sb.from('posts').select('*').order('created_at', { ascending: false });
-    return data || [];
+  if (S.isDemo) return DEMO_POSTS;
+  const { data } = await sb.from('posts').select('*').order('created_at', { ascending: false });
+  return data || [];
 }
 
 // ─────────────────────────────────────────────
 // ROUTER
 // ─────────────────────────────────────────────
 function navigateTo(view, param = null) {
-    S.view = view; S.postId = param;
-    const hash = view === 'feed' ? '#/' : view === 'detail' ? `#/post/${param}` : `#/${view}`;
-    if (window.location.hash !== hash) window.location.hash = hash;
-    render();
+  S.view = view; S.postId = param;
+  const hash = view === 'feed' ? '#/' : view === 'detail' ? `#/post/${param}` : `#/${view}`;
+  if (window.location.hash !== hash) window.location.hash = hash;
+  render();
 }
 
 function handleRoute() {
-    const h = window.location.hash || '#/';
-    if (h === '#/') { S.view = 'feed'; }
-    else if (h.startsWith('#/post/')) { S.view = 'detail'; S.postId = h.replace('#/post/', ''); }
-    else if (h === '#/admin') { S.view = 'admin'; }
-    else if (h === '#/apply') { S.view = 'apply'; }
-    else if (h === '#/create') { S.view = 'create'; }
-    render();
+  const h = window.location.hash || '#/';
+  if (h === '#/') { S.view = 'feed'; }
+  else if (h.startsWith('#/post/')) { S.view = 'detail'; S.postId = h.replace('#/post/', ''); }
+  else if (h === '#/admin') { S.view = 'admin'; }
+  else if (h === '#/apply') { S.view = 'apply'; }
+  else if (h === '#/create') { S.view = 'create'; }
+  render();
 }
 
 // ─────────────────────────────────────────────
 // RENDER ORCHESTRATOR
 // ─────────────────────────────────────────────
 function render() {
-    renderNav();
-    renderSidebar();
-    const views = { feed: renderFeed, detail: renderDetail, admin: renderAdmin, apply: renderApply, create: renderCreate };
-    (views[S.view] || renderFeed)();
+  renderNav();
+  renderSidebar();
+  const views = { feed: renderFeed, detail: renderDetail, admin: renderAdmin, apply: renderApply, create: renderCreate };
+  (views[S.view] || renderFeed)();
 }
 
 // ─────────────────────────────────────────────
 // NAV
 // ─────────────────────────────────────────────
 function renderNav() {
-    document.getElementById('navbar').innerHTML = `
+  document.getElementById('navbar').innerHTML = `
     <a class="nav-logo" onclick="navigateTo('feed');return false;" href="#/">재고털이</a>
     <div class="nav-right">
       ${S.user ? `
@@ -266,52 +266,52 @@ function renderNav() {
 // SIDEBAR
 // ─────────────────────────────────────────────
 function renderSidebar() {
-    let html = '';
-    CATEGORIES.forEach(cat => {
-        const hasKids = cat.subs.length > 0;
-        const expanded = S.expanded.has(cat.id);
-        const active = !hasKids && S.category === cat.id;
-        html += `<div class="sidebar-item${active ? ' active' : ''}"
+  let html = '';
+  CATEGORIES.forEach(cat => {
+    const hasKids = cat.subs.length > 0;
+    const expanded = S.expanded.has(cat.id);
+    const active = !hasKids && S.category === cat.id;
+    html += `<div class="sidebar-item${active ? ' active' : ''}"
         onclick="${hasKids ? `toggleExpand('${cat.id}')` : `selectCat('${cat.id}')`}">
       <span class="sidebar-icon">${cat.icon}</span>${esc(cat.label)}
       ${hasKids ? `<span class="sidebar-arrow">${expanded ? '▾' : '▸'}</span>` : ''}
     </div>`;
-        if (hasKids && expanded) {
-            cat.subs.forEach(s => {
-                html += `<div class="sidebar-item sidebar-sub${S.category === s.id ? ' active' : ''}"
+    if (hasKids && expanded) {
+      cat.subs.forEach(s => {
+        html += `<div class="sidebar-item sidebar-sub${S.category === s.id ? ' active' : ''}"
             onclick="selectCat('${s.id}')">${esc(s.label)}</div>`;
-            });
-        }
-    });
-    document.getElementById('sidebar').innerHTML = html;
+      });
+    }
+  });
+  document.getElementById('sidebar').innerHTML = html;
 }
 
 function toggleExpand(id) {
-    S.expanded.has(id) ? S.expanded.delete(id) : S.expanded.add(id);
-    renderSidebar();
+  S.expanded.has(id) ? S.expanded.delete(id) : S.expanded.add(id);
+  renderSidebar();
 }
 
 function selectCat(id) {
-    S.category = id; S.view = 'feed';
-    window.location.hash = '#/';
-    render();
+  S.category = id; S.view = 'feed';
+  window.location.hash = '#/';
+  render();
 }
 
 // ─────────────────────────────────────────────
 // FEED
 // ─────────────────────────────────────────────
 async function renderFeed() {
-    const el = document.getElementById('content');
-    el.innerHTML = `<div class="loading"><div class="spinner"></div> 불러오는 중...</div>`;
-    const posts = await fetchPosts(S.category);
-    const catLabel = getCatLabel(S.category);
-    const canPost = S.role === 'seller' || S.role === 'admin';
+  const el = document.getElementById('content');
+  el.innerHTML = `<div class="loading"><div class="spinner"></div> 불러오는 중...</div>`;
+  const posts = await fetchPosts(S.category);
+  const catLabel = getCatLabel(S.category);
+  const canPost = S.role === 'seller' || S.role === 'admin';
 
-    const cardsHtml = posts.length === 0
-        ? `<div class="empty-state"><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3><p>곧 새로운 딜이 업로드됩니다.</p></div>`
-        : `<div class="cards-grid">${posts.map(p => cardHtml(p)).join('')}</div>`;
+  const cardsHtml = posts.length === 0
+    ? `<div class="empty-state"><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3><p>곧 새로운 딜이 업로드됩니다.</p></div>`
+    : `<div class="cards-grid">${posts.map(p => cardHtml(p)).join('')}</div>`;
 
-    el.innerHTML = `
+  el.innerHTML = `
     <div class="feed-header">
       <h2 class="feed-title">${esc(catLabel)}</h2>
       ${canPost ? `<button class="btn btn-primary btn-sm" onclick="navigateTo('create')">+ 글쓰기</button>` : ''}
@@ -321,10 +321,10 @@ async function renderFeed() {
 }
 
 function cardHtml(p) {
-    const img = p.image_url
-        ? `<img src="${esc(p.image_url)}" alt="${esc(p.title)}" class="card-img" loading="lazy">`
-        : `<div class="card-placeholder">${getCatEmoji(p.category)}</div>`;
-    return `
+  const img = p.image_url
+    ? `<img src="${esc(p.image_url)}" alt="${esc(p.title)}" class="card-img" loading="lazy">`
+    : `<div class="card-placeholder">${getCatEmoji(p.category)}</div>`;
+  return `
     <div class="post-card" onclick="navigateTo('detail','${p.id}')">
       <div class="card-img-wrap">
         ${img}
@@ -347,25 +347,25 @@ function cardHtml(p) {
 // POST DETAIL
 // ─────────────────────────────────────────────
 async function renderDetail() {
-    const el = document.getElementById('content');
-    el.innerHTML = `<div class="loading"><div class="spinner"></div> 불러오는 중...</div>`;
-    const post = await fetchPost(S.postId);
-    if (!post) { el.innerHTML = `<div class="empty-state"><div class="empty-emoji">🚫</div><h3>게시글을 찾을 수 없습니다</h3></div>`; return; }
-    const comments = await fetchComments(post.id);
+  const el = document.getElementById('content');
+  el.innerHTML = `<div class="loading"><div class="spinner"></div> 불러오는 중...</div>`;
+  const post = await fetchPost(S.postId);
+  if (!post) { el.innerHTML = `<div class="empty-state"><div class="empty-emoji">🚫</div><h3>게시글을 찾을 수 없습니다</h3></div>`; return; }
+  const comments = await fetchComments(post.id);
 
-    const imgHtml = post.image_url
-        ? `<img src="${esc(post.image_url)}" alt="${esc(post.title)}" class="detail-img">`
-        : `<div class="detail-img-placeholder">${getCatEmoji(post.category)}</div>`;
+  const imgHtml = post.image_url
+    ? `<img src="${esc(post.image_url)}" alt="${esc(post.title)}" class="detail-img">`
+    : `<div class="detail-img-placeholder">${getCatEmoji(post.category)}</div>`;
 
-    const commentsHtml = comments.length === 0
-        ? `<p style="color:var(--text-muted);font-size:14px;">아직 댓글이 없습니다. 첫 댓글을 남겨보세요!</p>`
-        : comments.map(c => `
+  const commentsHtml = comments.length === 0
+    ? `<p style="color:var(--text-muted);font-size:14px;">아직 댓글이 없습니다. 첫 댓글을 남겨보세요!</p>`
+    : comments.map(c => `
       <div class="comment-item">
         <div class="comment-author">${esc(c.users?.email?.split('@')[0] || '익명')}<span class="comment-time">${formatDate(c.created_at)}</span></div>
         <div class="comment-content">${esc(c.content)}</div>
       </div>`).join('');
 
-    el.innerHTML = `
+  el.innerHTML = `
     <div class="post-detail">
       <a class="btn btn-ghost btn-sm detail-back" onclick="history.back();return false;" href="#">← 목록으로</a>
       ${imgHtml}
@@ -381,11 +381,11 @@ async function renderDetail() {
       <div class="comments-section">
         <h2 class="comments-title">댓글 ${comments.length}개</h2>
         ${S.user
-            ? `<div class="comment-form">
+      ? `<div class="comment-form">
                <textarea id="c-input" class="comment-input" placeholder="댓글을 입력해 주세요..."></textarea>
                <button class="btn btn-primary btn-sm" onclick="submitComment(${post.id})">등록</button>
              </div>`
-            : `<p style="font-size:13px;color:var(--text-sub);margin-bottom:16px;">
+      : `<p style="font-size:13px;color:var(--text-sub);margin-bottom:16px;">
                댓글을 남기려면 <a href="#" onclick="showLoginModal();return false;" style="color:var(--primary);font-weight:600;">로그인</a>이 필요합니다.
              </p>`}
         <div id="comment-list">${commentsHtml}</div>
@@ -394,39 +394,39 @@ async function renderDetail() {
 }
 
 async function submitComment(postId) {
-    const inp = document.getElementById('c-input');
-    const txt = inp?.value.trim();
-    if (!txt) { showToast('댓글 내용을 입력해 주세요'); return; }
-    if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
-    try {
-        await addComment(postId, txt);
-        inp.value = '';
-        showToast('댓글이 등록되었습니다');
-        const comments = await fetchComments(postId);
-        document.getElementById('comment-list').innerHTML = comments.map(c => `
+  const inp = document.getElementById('c-input');
+  const txt = inp?.value.trim();
+  if (!txt) { showToast('댓글 내용을 입력해 주세요'); return; }
+  if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
+  try {
+    await addComment(postId, txt);
+    inp.value = '';
+    showToast('댓글이 등록되었습니다');
+    const comments = await fetchComments(postId);
+    document.getElementById('comment-list').innerHTML = comments.map(c => `
       <div class="comment-item">
         <div class="comment-author">${esc(c.users?.email?.split('@')[0] || '익명')}<span class="comment-time">${formatDate(c.created_at)}</span></div>
         <div class="comment-content">${esc(c.content)}</div>
       </div>`).join('');
-    } catch (e) { showToast('오류: ' + e.message); }
+  } catch (e) { showToast('오류: ' + e.message); }
 }
 
 // ─────────────────────────────────────────────
 // ADMIN
 // ─────────────────────────────────────────────
 async function renderAdmin() {
-    const el = document.getElementById('content');
-    if (!S.isDemo && S.role !== 'admin') {
-        el.innerHTML = `<div class="empty-state"><div class="empty-emoji">🔐</div><h3>관리자만 접근할 수 있습니다</h3></div>`;
-        return;
-    }
-    el.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
-    await renderAdminContent();
+  const el = document.getElementById('content');
+  if (!S.isDemo && S.role !== 'admin') {
+    el.innerHTML = `<div class="empty-state"><div class="empty-emoji">🔐</div><h3>관리자만 접근할 수 있습니다</h3></div>`;
+    return;
+  }
+  el.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  await renderAdminContent();
 }
 
 async function renderAdminContent() {
-    const el = document.getElementById('content');
-    const tabsHtml = `
+  const el = document.getElementById('content');
+  const tabsHtml = `
     <div class="page-header"><h1>관리자 대시보드</h1><p>판매자 승인 및 게시글 관리</p></div>
     <div class="admin-tabs">
       <button class="admin-tab${S.adminTab === 'sellers' ? ' active' : ''}" onclick="switchTab('sellers')">판매자 승인</button>
@@ -434,28 +434,28 @@ async function renderAdminContent() {
       <button class="admin-tab${S.adminTab === 'all' ? ' active' : ''}" onclick="switchTab('all')">전체 게시글</button>
     </div>
     <div id="admin-body"></div>`;
-    el.innerHTML = tabsHtml;
-    await renderAdminTab();
+  el.innerHTML = tabsHtml;
+  await renderAdminTab();
 }
 
 async function switchTab(tab) {
-    S.adminTab = tab;
-    const tabs = document.querySelectorAll('.admin-tab');
-    tabs.forEach(t => t.classList.remove('active'));
-    tabs[['sellers', 'posts', 'all'].indexOf(tab)]?.classList.add('active');
-    await renderAdminTab();
+  S.adminTab = tab;
+  const tabs = document.querySelectorAll('.admin-tab');
+  tabs.forEach(t => t.classList.remove('active'));
+  tabs[['sellers', 'posts', 'all'].indexOf(tab)]?.classList.add('active');
+  await renderAdminTab();
 }
 
 async function renderAdminTab() {
-    const body = document.getElementById('admin-body');
-    if (!body) return;
-    body.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  const body = document.getElementById('admin-body');
+  if (!body) return;
+  body.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
 
-    if (S.adminTab === 'sellers') {
-        const data = await fetchPendingSellers();
-        body.innerHTML = data.length === 0
-            ? `<div class="empty-state"><div class="empty-emoji">✅</div><h3>대기 중인 판매자 신청이 없습니다</h3></div>`
-            : `<table class="admin-table">
+  if (S.adminTab === 'sellers') {
+    const data = await fetchPendingSellers();
+    body.innerHTML = data.length === 0
+      ? `<div class="empty-state"><div class="empty-emoji">✅</div><h3>대기 중인 판매자 신청이 없습니다</h3></div>`
+      : `<table class="admin-table">
           <thead><tr><th>이메일</th><th>신청일</th><th>상태</th><th>액션</th></tr></thead>
           <tbody>${data.map(d => `
             <tr>
@@ -470,11 +470,11 @@ async function renderAdminTab() {
           </tbody>
         </table>`;
 
-    } else if (S.adminTab === 'posts') {
-        const data = await fetchPendingPosts();
-        body.innerHTML = data.length === 0
-            ? `<div class="empty-state"><div class="empty-emoji">✅</div><h3>승인 대기 게시글이 없습니다</h3></div>`
-            : `<table class="admin-table">
+  } else if (S.adminTab === 'posts') {
+    const data = await fetchPendingPosts();
+    body.innerHTML = data.length === 0
+      ? `<div class="empty-state"><div class="empty-emoji">✅</div><h3>승인 대기 게시글이 없습니다</h3></div>`
+      : `<table class="admin-table">
           <thead><tr><th>제목</th><th>카테고리</th><th>가격</th><th>액션</th></tr></thead>
           <tbody>${data.map(p => `
             <tr>
@@ -489,11 +489,11 @@ async function renderAdminTab() {
           </tbody>
         </table>`;
 
-    } else {
-        const data = await fetchAllPostsAdmin();
-        body.innerHTML = data.length === 0
-            ? `<div class="empty-state"><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3></div>`
-            : `<table class="admin-table">
+  } else {
+    const data = await fetchAllPostsAdmin();
+    body.innerHTML = data.length === 0
+      ? `<div class="empty-state"><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3></div>`
+      : `<table class="admin-table">
           <thead><tr><th>제목</th><th>카테고리</th><th>상태</th><th>조회</th><th>액션</th></tr></thead>
           <tbody>${data.map(p => `
             <tr>
@@ -507,55 +507,55 @@ async function renderAdminTab() {
             </tr>`).join('')}
           </tbody>
         </table>`;
-    }
+  }
 }
 
 async function approveSeller(appId, userId) {
-    if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
-    await sb.from('seller_applications').update({ status: 'approved' }).eq('id', appId);
-    await sb.from('users').update({ role: 'seller' }).eq('id', userId);
-    showToast('판매자로 승인되었습니다');
-    await renderAdminTab();
+  if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
+  await sb.from('seller_applications').update({ status: 'approved' }).eq('id', appId);
+  await sb.from('users').update({ role: 'seller' }).eq('id', userId);
+  showToast('판매자로 승인되었습니다');
+  await renderAdminTab();
 }
 async function rejectSeller(appId) {
-    if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
-    await sb.from('seller_applications').update({ status: 'rejected' }).eq('id', appId);
-    showToast('신청이 거절되었습니다');
-    await renderAdminTab();
+  if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
+  await sb.from('seller_applications').update({ status: 'rejected' }).eq('id', appId);
+  showToast('신청이 거절되었습니다');
+  await renderAdminTab();
 }
 async function approvePost(postId) {
-    if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
-    await sb.from('posts').update({ approved: true }).eq('id', postId);
-    showToast('게시글이 승인되었습니다');
-    await renderAdminTab();
+  if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
+  await sb.from('posts').update({ approved: true }).eq('id', postId);
+  showToast('게시글이 승인되었습니다');
+  await renderAdminTab();
 }
 async function deletePost(postId) {
-    if (!confirm('정말 삭제하시겠습니까?')) return;
-    if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
-    await sb.from('posts').delete().eq('id', postId);
-    showToast('삭제되었습니다');
-    await renderAdminTab();
+  if (!confirm('정말 삭제하시겠습니까?')) return;
+  if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
+  await sb.from('posts').delete().eq('id', postId);
+  showToast('삭제되었습니다');
+  await renderAdminTab();
 }
 
 // ─────────────────────────────────────────────
 // SELLER APPLY
 // ─────────────────────────────────────────────
 function renderApply() {
-    const el = document.getElementById('content');
-    if (!S.user) {
-        el.innerHTML = `
+  const el = document.getElementById('content');
+  if (!S.user) {
+    el.innerHTML = `
       <div class="form-card">
         <div class="page-header"><h1>판매자 신청</h1><p>판매자가 되어 재고 딜을 올려보세요.</p></div>
         <p style="color:var(--text-sub);margin-bottom:16px;">판매자 신청을 위해 먼저 로그인이 필요합니다.</p>
         <button class="btn btn-primary" onclick="showLoginModal()">로그인하기</button>
       </div>`;
-        return;
-    }
-    if (S.role === 'seller' || S.role === 'admin') {
-        el.innerHTML = `<div class="form-card"><div class="empty-state"><div class="empty-emoji">🎉</div><h3>이미 판매자입니다</h3><p>상단 '+ 글쓰기' 버튼으로 딜을 올려보세요.</p></div></div>`;
-        return;
-    }
-    el.innerHTML = `
+    return;
+  }
+  if (S.role === 'seller' || S.role === 'admin') {
+    el.innerHTML = `<div class="form-card"><div class="empty-state"><div class="empty-emoji">🎉</div><h3>이미 판매자입니다</h3><p>상단 '+ 글쓰기' 버튼으로 딜을 올려보세요.</p></div></div>`;
+    return;
+  }
+  el.innerHTML = `
     <div class="form-card">
       <div class="page-header"><h1>판매자 신청</h1><p>신청 후 관리자 검토를 거쳐 승인됩니다.</p></div>
       <div class="form-group">
@@ -571,32 +571,32 @@ function renderApply() {
 }
 
 async function submitApply() {
-    if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
-    try {
-        await sb.from('seller_applications').insert({ user_id: S.user.id, status: 'pending' });
-        showToast('신청이 접수되었습니다. 검토 후 승인됩니다.');
-        navigateTo('feed');
-    } catch (e) { showToast('오류: ' + e.message); }
+  if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
+  try {
+    await sb.from('seller_applications').insert({ user_id: S.user.id, status: 'pending' });
+    showToast('신청이 접수되었습니다. 검토 후 승인됩니다.');
+    navigateTo('feed');
+  } catch (e) { showToast('오류: ' + e.message); }
 }
 
 // ─────────────────────────────────────────────
 // CREATE POST
 // ─────────────────────────────────────────────
 function renderCreate() {
-    const el = document.getElementById('content');
-    if (!S.user) {
-        el.innerHTML = `<div class="form-card"><div class="empty-state"><div class="empty-emoji">🔒</div><h3>로그인이 필요합니다</h3></div></div>`;
-        return;
-    }
-    if (S.role !== 'seller' && S.role !== 'admin') {
-        el.innerHTML = `<div class="form-card"><div class="empty-state"><div class="empty-emoji">🚫</div><h3>판매자 계정이 필요합니다</h3><p>판매자 신청 후 관리자 승인이 필요합니다.</p><br><button class="btn btn-primary" onclick="navigateTo('apply')">판매자 신청하기</button></div></div>`;
-        return;
-    }
+  const el = document.getElementById('content');
+  if (!S.user) {
+    el.innerHTML = `<div class="form-card"><div class="empty-state"><div class="empty-emoji">🔒</div><h3>로그인이 필요합니다</h3></div></div>`;
+    return;
+  }
+  if (S.role !== 'seller' && S.role !== 'admin') {
+    el.innerHTML = `<div class="form-card"><div class="empty-state"><div class="empty-emoji">🚫</div><h3>판매자 계정이 필요합니다</h3><p>판매자 신청 후 관리자 승인이 필요합니다.</p><br><button class="btn btn-primary" onclick="navigateTo('apply')">판매자 신청하기</button></div></div>`;
+    return;
+  }
 
-    const allSubs = CATEGORIES.flatMap(c => c.subs.length ? c.subs : [c]);
-    const catOptions = allSubs.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+  const allSubs = CATEGORIES.flatMap(c => c.subs.length ? c.subs : [c]);
+  const catOptions = allSubs.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
 
-    el.innerHTML = `
+  el.innerHTML = `
     <div class="form-card">
       <div class="page-header"><h1>딜 등록</h1><p>관리자 승인 후 공개됩니다.</p></div>
       <div class="form-group">
@@ -633,41 +633,41 @@ function renderCreate() {
 }
 
 async function submitPost() {
-    if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
-    const title = document.getElementById('p-title')?.value.trim();
-    const cat = document.getElementById('p-cat')?.value;
-    const price = document.getElementById('p-price')?.value.trim();
-    const desc = document.getElementById('p-desc')?.value.trim();
-    if (!title || !price || !desc) { showToast('필수 항목을 모두 입력해 주세요'); return; }
-    try {
-        await sb.from('posts').insert({
-            title, category: cat, price, description: desc,
-            image_url: document.getElementById('p-img')?.value || null,
-            purchase_link: document.getElementById('p-link')?.value || null,
-            is_hot: document.getElementById('p-hot')?.checked || false,
-            approved: false,
-            views: 0,
-            comments_count: 0,
-        });
-        showToast('등록 신청 완료! 관리자 승인 후 공개됩니다.');
-        navigateTo('feed');
-    } catch (e) { showToast('오류: ' + e.message); }
+  if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
+  const title = document.getElementById('p-title')?.value.trim();
+  const cat = document.getElementById('p-cat')?.value;
+  const price = document.getElementById('p-price')?.value.trim();
+  const desc = document.getElementById('p-desc')?.value.trim();
+  if (!title || !price || !desc) { showToast('필수 항목을 모두 입력해 주세요'); return; }
+  try {
+    await sb.from('posts').insert({
+      title, category: cat, price, description: desc,
+      image_url: document.getElementById('p-img')?.value || null,
+      purchase_link: document.getElementById('p-link')?.value || null,
+      is_hot: document.getElementById('p-hot')?.checked || false,
+      approved: false,
+      views: 0,
+      comments_count: 0,
+    });
+    showToast('등록 신청 완료! 관리자 승인 후 공개됩니다.');
+    navigateTo('feed');
+  } catch (e) { showToast('오류: ' + e.message); }
 }
 
 // ─────────────────────────────────────────────
 // MODALS
 // ─────────────────────────────────────────────
 function openModal(html) {
-    document.getElementById('modal-backdrop').classList.remove('hidden');
-    document.getElementById('modal-container').innerHTML = `<div class="modal">${html}</div>`;
+  document.getElementById('modal-backdrop').classList.remove('hidden');
+  document.getElementById('modal-container').innerHTML = `<div class="modal">${html}</div>`;
 }
 function closeModal() {
-    document.getElementById('modal-backdrop').classList.add('hidden');
-    document.getElementById('modal-container').innerHTML = '';
+  document.getElementById('modal-backdrop').classList.add('hidden');
+  document.getElementById('modal-container').innerHTML = '';
 }
 
 function showLoginModal() {
-    openModal(`
+  openModal(`
     <button class="modal-close" onclick="closeModal()">✕</button>
     <div class="modal-title">로그인</div>
     <div class="modal-subtitle">재고털이에 오신 것을 환영합니다</div>
@@ -683,11 +683,11 @@ function showLoginModal() {
     </div>
     <button class="btn btn-primary btn-full" onclick="modalLogin()">로그인</button>
     <div class="modal-switch">계정이 없으신가요? <a onclick="showSignupModal()">판매자 가입</a></div>`);
-    setTimeout(() => document.getElementById('l-email')?.focus(), 50);
+  setTimeout(() => document.getElementById('l-email')?.focus(), 50);
 }
 
 function showSignupModal() {
-    openModal(`
+  openModal(`
     <button class="modal-close" onclick="closeModal()">✕</button>
     <div class="modal-title">판매자 가입</div>
     <div class="modal-subtitle">가입 후 판매자 신청을 진행해 주세요</div>
@@ -703,41 +703,41 @@ function showSignupModal() {
     </div>
     <button class="btn btn-primary btn-full" onclick="modalSignup()">가입하기</button>
     <div class="modal-switch">이미 계정이 있으신가요? <a onclick="showLoginModal()">로그인</a></div>`);
-    setTimeout(() => document.getElementById('s-email')?.focus(), 50);
+  setTimeout(() => document.getElementById('s-email')?.focus(), 50);
 }
 
 async function modalLogin() {
-    const email = document.getElementById('l-email')?.value.trim();
-    const pw = document.getElementById('l-pw')?.value;
-    const errEl = document.getElementById('modal-err');
-    if (!email || !pw) { errEl.textContent = '이메일과 비밀번호를 입력해 주세요'; return; }
-    try { await doLogin(email, pw); } catch (e) { errEl.textContent = e.message; }
+  const email = document.getElementById('l-email')?.value.trim();
+  const pw = document.getElementById('l-pw')?.value;
+  const errEl = document.getElementById('modal-err');
+  if (!email || !pw) { errEl.textContent = '이메일과 비밀번호를 입력해 주세요'; return; }
+  try { await doLogin(email, pw); } catch (e) { errEl.textContent = e.message; }
 }
 
 async function modalSignup() {
-    const email = document.getElementById('s-email')?.value.trim();
-    const pw = document.getElementById('s-pw')?.value;
-    const errEl = document.getElementById('modal-err');
-    if (!email || !pw) { errEl.textContent = '이메일과 비밀번호를 입력해 주세요'; return; }
-    if (pw.length < 6) { errEl.textContent = '비밀번호는 6자 이상이어야 합니다'; return; }
-    try { await doSignup(email, pw); } catch (e) { errEl.textContent = e.message; }
+  const email = document.getElementById('s-email')?.value.trim();
+  const pw = document.getElementById('s-pw')?.value;
+  const errEl = document.getElementById('modal-err');
+  if (!email || !pw) { errEl.textContent = '이메일과 비밀번호를 입력해 주세요'; return; }
+  if (pw.length < 6) { errEl.textContent = '비밀번호는 6자 이상이어야 합니다'; return; }
+  try { await doSignup(email, pw); } catch (e) { errEl.textContent = e.message; }
 }
 
 // ─────────────────────────────────────────────
 // INIT
 // ─────────────────────────────────────────────
 async function init() {
-    if (sb) {
-        const { data: { session } } = await sb.auth.getSession();
-        if (session) { S.user = session.user; await loadRole(); }
-        sb.auth.onAuthStateChange(async (_event, session) => {
-            S.user = session?.user || null;
-            if (S.user) await loadRole(); else S.role = null;
-            renderNav();
-        });
-    }
-    window.addEventListener('hashchange', handleRoute);
-    handleRoute();
+  if (sb) {
+    const { data: { session } } = await sb.auth.getSession();
+    if (session) { S.user = session.user; await loadRole(); }
+    sb.auth.onAuthStateChange(async (_event, session) => {
+      S.user = session?.user || null;
+      if (S.user) await loadRole(); else S.role = null;
+      renderNav();
+    });
+  }
+  window.addEventListener('hashchange', handleRoute);
+  handleRoute();
 }
 
 init();
