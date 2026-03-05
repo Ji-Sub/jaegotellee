@@ -10,7 +10,7 @@
 // CONFIG
 // ─────────────────────────────────────────────
 const SUPABASE_URL = 'https://ohjmvkmuhuoiuguetmyp.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oam12a211aHVvaXVndWV0bXlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0ODczMzksImV4cCI6MjA4ODI4NzMzOX0.R0bdr5_ucXIJWRaqIlRit3sQdg2wQhqnb-nNtelz-iY';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9oam12a211aHVvaXVndWV0bXlwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI2ODczMzksImV4cCI6MjA4ODI2MzMzOX0.R0bdr5_ucXlJWRAqilRit3sQdg2wQhqnb-nNtelz-iY';
 
 // ─────────────────────────────────────────────
 // CATEGORIES
