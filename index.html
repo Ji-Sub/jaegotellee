@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>재고털이 - 검증된 재고 특가 딜</title>
+    <meta name="description" content="판매자가 남은 재고를 빠르게 판매하고, 소비자가 검증된 특가 상품을 발견하는 플랫폼" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+    <div id="app">
+        <nav id="navbar"></nav>
+        <div class="layout">
+            <aside id="sidebar"></aside>
+            <main id="content"></main>
+        </div>
+    </div>
+
+    <!-- Modal -->
+    <div id="modal-backdrop" class="modal-backdrop hidden" onclick="closeModal()"></div>
+    <div id="modal-container"></div>
+
+    <!-- Toast -->
+    <div id="toast"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script src="main.js"></script>
+</body>
+
+</html>
