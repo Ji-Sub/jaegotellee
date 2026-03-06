@@ -235,7 +235,16 @@ function render() {
   renderNav();
   renderSidebar();
   const views = { feed: renderFeed, detail: renderDetail, admin: renderAdmin, apply: renderApply, create: renderCreate };
-  (views[S.view] || renderFeed)();
+  const viewFn = views[S.view] || renderFeed;
+
+  // viewFn is typically an async function. We catch rejections so the UI doesn't hang.
+  const promise = viewFn();
+  if (promise && promise.catch) {
+    promise.catch(e => {
+      console.error('Render error:', e);
+      document.getElementById('content').innerHTML = `<div class="empty-state"><div class="empty-emoji">❌</div><h3>화면을 그리는 중 오류가 발생했습니다</h3><p>${e.message}</p></div>`;
+    });
+  }
 }
 
 // ─────────────────────────────────────────────
