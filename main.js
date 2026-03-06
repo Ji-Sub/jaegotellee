@@ -372,8 +372,23 @@ async function renderHotdealDetail() {
     const shipping = doc.querySelector('shipping_cost')?.textContent || '';
     const mall = doc.querySelector('shopping_mall')?.textContent || '';
 
-    const externalLinks = Array.from(doc.querySelectorAll('links > link')).map(l => l.textContent);
-    const contentHtml = doc.querySelector('content')?.innerHTML || '내용이 없습니다.';
+    const linkMatches = [...htmlText.matchAll(/<link>(.*?)<\/link>/g)];
+    const externalLinks = linkMatches.map(m => m[1].trim());
+
+    const contentEl = doc.querySelector('content');
+    if (contentEl) {
+      contentEl.querySelectorAll('img').forEach(img => {
+        const src = img.getAttribute('src');
+        if (src) {
+          if (src.startsWith('//')) {
+            img.src = 'https:' + src;
+          } else if (src.startsWith('/')) {
+            img.src = 'https://hotdeal.zip' + src;
+          }
+        }
+      });
+    }
+    const contentHtml = contentEl?.innerHTML || '내용이 없습니다.';
 
     el.innerHTML = `
       <div class="post-detail">
