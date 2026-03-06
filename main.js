@@ -325,11 +325,68 @@ function selectCat(id) {
 }
 
 // ─────────────────────────────────────────────
+// HOT DEAL FETCHING (hotdeal.zip integration)
+// ─────────────────────────────────────────────
+async function fetchHotDeals() {
+  try {
+    const url = encodeURIComponent('https://hotdeal.zip/api/deals.php?page=1&category=all');
+    const proxyUrl = `https://api.allorigins.win/get?url=${url}`;
+    const res = await fetch(proxyUrl);
+    const origin = await res.json();
+    const parsed = JSON.parse(origin.contents);
+    if (parsed && parsed.success) {
+      return parsed.data;
+    }
+    return [];
+  } catch (e) {
+    console.error('Failed to fetch hotdeals', e);
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────
 // FEED
 // ─────────────────────────────────────────────
 async function renderFeed() {
   const el = document.getElementById('content');
   el.innerHTML = `<div class="loading"><div class="spinner"></div> 불러오는 중...</div>`;
+
+  if (S.category === 'hotdeal') {
+    const deals = await fetchHotDeals();
+    if (!deals || deals.length === 0) {
+      el.innerHTML = `<div class="empty-state"><div class="empty-emoji">📭</div><h3>핫딜이 없습니다</h3><p>현재 불러올 수 있는 핫딜이 없습니다.</p></div>`;
+      return;
+    }
+
+    const listHtml = deals.map(d => {
+      // Hotdeal UI list items with existing color scheme compatibility.
+      return `
+        <a href="${esc(d.post_url)}" target="_blank" rel="noopener" class="hotdeal-list-item">
+          <img src="${esc(d.thumbnail_url)}" alt="${esc(d.title)}" class="hotdeal-thumb" loading="lazy">
+          <div class="hotdeal-info">
+            <div class="hotdeal-badge" style="background: ${esc(d.gradient)}">${esc(d.community_name)}</div>
+            <h3 class="hotdeal-title">${esc(d.title)}</h3>
+            <div class="hotdeal-meta">
+              <span class="hotdeal-price">${esc(d.price)}</span>
+              <span class="hotdeal-site">${esc(d.site)}</span>
+              <span class="hotdeal-time">${esc(d.time)}</span>
+            </div>
+          </div>
+        </a>
+      `;
+    }).join('');
+
+    el.innerHTML = `
+      <div class="feed-header">
+        <h2 class="feed-title">🔥 핫딜 모음 <span style="font-size:12px;color:var(--text-sub);font-weight:normal;margin-left:8px;">Powered by hotdeal.zip</span></h2>
+      </div>
+      <div class="hotdeal-list-container">
+        ${listHtml}
+      </div>
+    `;
+    return;
+  }
+
   const posts = await fetchPosts(S.category);
   const catLabel = getCatLabel(S.category);
   const canPost = S.role === 'seller' || S.role === 'admin';
