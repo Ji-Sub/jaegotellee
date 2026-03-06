@@ -708,11 +708,6 @@ function renderCreate() {
         <label class="form-label">구매 링크</label>
         <input class="form-input" id="p-link" type="url" placeholder="https://...">
       </div>
-      <div class="form-group">
-        <label class="form-label" style="display:flex;align-items:center;gap:8px;cursor:pointer;">
-          <input type="checkbox" id="p-hot"> 핫딜로 등록
-        </label>
-      </div>
       <button class="btn btn-primary btn-full" onclick="submitPost()">등록 신청</button>
     </div>`;
 }
@@ -729,7 +724,7 @@ async function submitPost() {
       title, category: cat, price, description: desc,
       image_url: document.getElementById('p-img')?.value || null,
       purchase_link: document.getElementById('p-link')?.value || null,
-      is_hot: document.getElementById('p-hot')?.checked || false,
+      is_hot: false,
       approved: false,
       views: 0,
       comments_count: 0,
