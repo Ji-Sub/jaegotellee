@@ -430,7 +430,7 @@ async function renderFeed() {
 
     el.innerHTML = `
       <div class="feed-header">
-        <h2 class="feed-title">🔥 핫딜 모음 <span style="font-size:12px;color:var(--text-sub);font-weight:normal;margin-left:8px;">Powered by hotdeal.zip</span></h2>
+        <h2 class="feed-title">🔥 핫딜 모음</h2>
       </div>
       <div class="hotdeal-list-container">
         ${listHtml}
