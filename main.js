@@ -410,7 +410,7 @@ async function renderDetail() {
         ${S.user
       ? `<div class="comment-form">
                <textarea id="c-input" class="comment-input" placeholder="댓글을 입력해 주세요..."></textarea>
-               <button class="btn btn-primary btn-sm" onclick="submitComment(${post.id})">등록</button>
+               <button class="btn btn-primary btn-sm" onclick="submitComment('${post.id}')">등록</button>
              </div>`
       : `<p style="font-size:13px;color:var(--text-sub);margin-bottom:16px;">
                댓글을 남기려면 <a href="javascript:void(0)" onclick="showLoginModal();return false;" style="color:var(--primary);font-weight:600;">로그인</a>이 필요합니다.
