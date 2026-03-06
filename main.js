@@ -203,13 +203,15 @@ async function fetchPendingSellers() {
 
 async function fetchPendingPosts() {
   if (S.isDemo) return [];
-  const { data } = await sb.from('posts').select('*').eq('approved', false).order('created_at', { ascending: false });
+  const { data, error } = await sb.from('posts').select('*').eq('approved', false).order('created_at', { ascending: false });
+  if (error) { showToast('대기글 조회 오류: ' + error.message); return []; }
   return data || [];
 }
 
 async function fetchAllPostsAdmin() {
   if (S.isDemo) return DEMO_POSTS;
-  const { data } = await sb.from('posts').select('*').order('created_at', { ascending: false });
+  const { data, error } = await sb.from('posts').select('*').order('created_at', { ascending: false });
+  if (error) { showToast('전체 게시글 불러오기 오류: ' + error.message); return []; }
   return data || [];
 }
 
