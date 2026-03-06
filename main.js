@@ -218,13 +218,6 @@ async function fetchAllPostsAdmin() {
 // ─────────────────────────────────────────────
 // ROUTER
 // ─────────────────────────────────────────────
-function navigateTo(view, param = null) {
-  S.view = view; S.postId = param;
-  const hash = view === 'feed' ? '#/' : view === 'detail' ? `#/post/${param}` : `#/${view}`;
-  if (window.location.hash !== hash) window.location.hash = hash;
-  render();
-}
-
 function handleRoute() {
   const h = window.location.hash || '#/';
   if (h === '#/') { S.view = 'feed'; }
@@ -294,16 +287,20 @@ function toggleExpand(id) {
 }
 
 let isNavigating = false;
-async function navigateTo(page, param = null) {
+async function navigateTo(view, param = null) {
   if (isNavigating) return;
   isNavigating = true;
-  S.page = page;
+
+  S.view = view;
+  S.postId = param;
+  const hash = view === 'feed' ? '#/' : view === 'detail' ? `#/post/${param}` : `#/${view}`;
+
   try {
-    if (page === 'feed') await renderFeed();
-    else if (page === 'create') renderCreate();
-    else if (page === 'apply') renderApply();
-    else if (page === 'admin') await renderAdmin();
-    else if (page === 'post') await renderPost(param);
+    if (window.location.hash !== hash) {
+      window.location.hash = hash;
+    } else {
+      render(); // manually trigger if hash is the same (e.g. clicking feed while on feed)
+    }
   } catch (e) {
     console.error(e);
     document.getElementById('content').innerHTML = `<div class="empty-state"><h3>오류가 발생했습니다</h3><p>${e.message}</p></div>`;
@@ -346,7 +343,7 @@ function cardHtml(p) {
     ? `<img src="${esc(p.image_url)}" alt="${esc(p.title)}" class="card-img" loading="lazy">`
     : `<div class="card-placeholder">${getCatEmoji(p.category)}</div>`;
   return `
-    <div class="post-card" onclick="navigateTo('post','${p.id}')">
+    <div class="post-card" onclick="navigateTo('detail','${p.id}')">
       <div class="card-img-wrap">
         ${img}
         ${p.is_hot ? `<span class="hot-badge">🔥 HOT</span>` : ''}
