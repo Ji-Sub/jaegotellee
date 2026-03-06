@@ -359,26 +359,56 @@ async function renderHotdealDetail() {
   el.innerHTML = `<div class="loading"><div class="spinner"></div> 불러오는 중...</div>`;
 
   try {
-    const decodedUrl = decodeURIComponent(S.postId);
-    const htmlText = await fetchHotdealDetail(decodedUrl);
+    const rawParam = decodeURIComponent(S.postId);
+    // If it's a slug (doesn't start with http), build the canonical hotdeal.zip URL
+    const targetUrl = rawParam.startsWith('http') ? rawParam : `https://hotdeal.zip/${rawParam}`;
 
+    const htmlText = await fetchHotdealDetail(targetUrl);
     if (!htmlText) throw new Error('데이터를 불러오지 못했습니다.');
 
+    // Pre-process proxy HTML to prevent <td> from being stripped outside of <table>
+    let safeHtmlText = htmlText;
+    if (htmlText.includes('<product_name>')) {
+      safeHtmlText = htmlText.replace(/<td([^>]*)>/gi, '<div$1>').replace(/<\/td>/gi, '</div>');
+    }
+
     const parser = new DOMParser();
-    const doc = parser.parseFromString(htmlText, 'text/html');
+    const doc = parser.parseFromString(safeHtmlText, 'text/html');
 
-    const title = doc.querySelector('product_name')?.textContent || '제목 없음';
-    const price = doc.querySelector('price')?.textContent || '';
-    const shipping = doc.querySelector('shipping_cost')?.textContent || '';
-    const mall = doc.querySelector('shopping_mall')?.textContent || '';
+    // 1. Try Canonical Hotdeal.zip structure first
+    let title = doc.querySelector('.deal-title')?.textContent?.trim();
+    let price = doc.querySelector('.price-value')?.textContent?.trim();
+    let shipping = '';
+    let mall = doc.querySelector('.shop-name')?.innerText?.trim();
 
-    const linkMatches = [...htmlText.matchAll(/<link>(.*?)<\/link>/g)];
-    const externalLinks = linkMatches.map(m => m[1].trim());
+    // Check if it's a 404/deleted canonical page
+    if (title === '🚨 신고하기' || doc.querySelector('title')?.textContent.includes('페이지를 찾을 수 없습니다')) {
+      throw new Error('이 핫딜은 삭제되었거나 더 이상 접근할 수 없습니다.');
+    }
 
+    let externalLinks = [];
+    const buyBtn = doc.querySelector('.buy-button');
+    if (buyBtn && buyBtn.getAttribute('href')) {
+      externalLinks.push(buyBtn.getAttribute('href'));
+    }
+
+    let contentEl = doc.querySelector('article');
+
+    // 2. Fallback to XML-like structure (proxy)
+    if (!title) title = doc.querySelector('product_name')?.textContent || '제목 없음';
+    if (!price) price = doc.querySelector('price')?.textContent || '';
+    if (!shipping) shipping = doc.querySelector('shipping_cost')?.textContent || '';
+    if (!mall) mall = doc.querySelector('shopping_mall')?.textContent || '';
+    if (externalLinks.length === 0) {
+      const linkMatches = [...htmlText.matchAll(/<link>(.*?)<\/link>/g)];
+      externalLinks = linkMatches.map(m => m[1].trim());
+    }
+    if (!contentEl) contentEl = doc.querySelector('content');
+
+    // Origin resolution for images
     const originMatch = htmlText.match(/현재 URL:<\/strong>\s*(https?:\/\/[^\s<]+)/);
-    const originUrl = originMatch ? originMatch[1].replace(/&amp;/g, '&') : 'https://hotdeal.zip';
+    const originUrl = originMatch ? originMatch[1].replace(/&amp;/g, '&') : targetUrl;
 
-    const contentEl = doc.querySelector('content');
     if (contentEl) {
       contentEl.querySelectorAll('img').forEach(img => {
         const src = img.getAttribute('src');
@@ -386,23 +416,22 @@ async function renderHotdealDetail() {
           try {
             img.src = new URL(src, originUrl).href;
           } catch (e) {
-            if (src.startsWith('//')) {
-              img.src = 'https:' + src;
-            } else if (src.startsWith('/')) {
-              img.src = 'https://hotdeal.zip' + src;
-            }
+            if (src.startsWith('//')) img.src = 'https:' + src;
+            else if (src.startsWith('/')) img.src = 'https://hotdeal.zip' + src;
           }
         }
       });
+      contentEl.querySelectorAll('script, style, iframe').forEach(s => s.remove());
     }
+
     const contentHtml = contentEl?.innerHTML || '내용이 없습니다.';
 
     el.innerHTML = `
       <div class="post-detail">
         <a class="btn btn-ghost btn-sm detail-back" onclick="history.back();return false;" href="javascript:void(0)">← 목록으로</a>
-        <div class="detail-cat">${esc(mall)}</div>
+        <div class="detail-cat">${esc(mall || '')}</div>
         <h1 class="detail-title">${esc(title)}</h1>
-        <div class="detail-price">${esc(price)} <span style="font-size:14px;color:var(--text-muted);font-weight:normal;">/ 배송비: ${esc(shipping)}</span></div>
+        <div class="detail-price">${esc(price)} ${shipping ? `<span style="font-size:14px;color:var(--text-muted);font-weight:normal;">/ 배송비: ${esc(shipping)}</span>` : ''}</div>
         <div class="comments-section" style="padding-top:20px;">
           <div class="detail-desc" style="white-space:normal; overflow:hidden;">
             ${contentHtml}
@@ -433,9 +462,10 @@ async function renderFeed() {
     }
 
     const listHtml = deals.map(d => {
-      // Hotdeal UI list items with existing color scheme compatibility.
+      // Use seo_url slug if available, otherwise fallback to post_url
+      const detailParam = d.seo_url || d.post_url;
       return `
-        <a href="javascript:void(0)" onclick="navigateTo('hotdeal_detail', '${encodeURIComponent(d.post_url)}')" class="hotdeal-list-item">
+        <a href="javascript:void(0)" onclick="navigateTo('hotdeal_detail', '${encodeURIComponent(detailParam)}')" class="hotdeal-list-item">
           <img src="${esc(d.thumbnail_url)}" alt="${esc(d.title)}" class="hotdeal-thumb" loading="lazy">
           <div class="hotdeal-info">
             <div class="hotdeal-badge" style="background: ${esc(d.gradient)}">${esc(d.community_name)}</div>
