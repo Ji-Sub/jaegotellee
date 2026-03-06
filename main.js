@@ -346,7 +346,7 @@ function cardHtml(p) {
     ? `<img src="${esc(p.image_url)}" alt="${esc(p.title)}" class="card-img" loading="lazy">`
     : `<div class="card-placeholder">${getCatEmoji(p.category)}</div>`;
   return `
-    <div class="post-card" onclick="navigateTo('detail','${p.id}')">
+    <div class="post-card" onclick="navigateTo('post','${p.id}')">
       <div class="card-img-wrap">
         ${img}
         ${p.is_hot ? `<span class="hot-badge">🔥 HOT</span>` : ''}
