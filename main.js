@@ -174,7 +174,7 @@ async function fetchPosts(category) {
 
 async function fetchPost(id) {
   if (S.isDemo) return DEMO_POSTS.find(p => p.id == id) || null;
-  await sb.rpc('increment_views', { post_id: id }).catch(() => { });
+  await sb.rpc('increment_views', { post_id: id });
   const { data } = await sb.from('posts').select('*').eq('id', id).single();
   return data;
 }
@@ -192,7 +192,7 @@ async function addComment(postId, content) {
   if (!S.user) { showLoginModal(); return; }
   const { error } = await sb.from('comments').insert({ post_id: postId, user_id: S.user.id, content });
   if (error) throw error;
-  await sb.rpc('increment_comments', { post_id: postId }).catch(() => { });
+  await sb.rpc('increment_comments', { post_id: postId });
 }
 
 async function fetchPendingSellers() {
