@@ -366,9 +366,10 @@ async function renderHotdealDetail() {
     const htmlText = await fetchHotdealDetail(targetUrl);
     if (!htmlText) throw new Error('데이터를 불러오지 못했습니다.');
 
-    // Pre-process proxy HTML to prevent <td> from being stripped outside of <table>
+    // Pre-process HTML to prevent <td> from being violently stripped by DOMParser when not in <table>
+    // This affects both proxy HTML and specific canonical pages like Ppomppu
     let safeHtmlText = htmlText;
-    if (htmlText.includes('<product_name>')) {
+    if (htmlText.includes('<product_name>') || htmlText.includes('class="board-contents"') || htmlText.includes("class='board-contents'")) {
       safeHtmlText = htmlText.replace(/<td([^>]*)>/gi, '<div$1>').replace(/<\/td>/gi, '</div>');
     }
 
@@ -392,7 +393,8 @@ async function renderHotdealDetail() {
       externalLinks.push(buyBtn.getAttribute('href'));
     }
 
-    let contentEl = doc.querySelector('article');
+    // Universal content selector for various communities (FMKorea: article, Quasarzone/Ppomppu: .deal-description)
+    let contentEl = doc.querySelector('article') || doc.querySelector('.deal-description');
 
     // 2. Fallback to XML-like structure (proxy)
     if (!title) title = doc.querySelector('product_name')?.textContent || '제목 없음';
@@ -403,6 +405,8 @@ async function renderHotdealDetail() {
       const linkMatches = [...htmlText.matchAll(/<link>(.*?)<\/link>/g)];
       externalLinks = linkMatches.map(m => m[1].trim());
     }
+
+    // Fallback proxy content wrapper
     if (!contentEl) contentEl = doc.querySelector('content');
 
     // Origin resolution for images
