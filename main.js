@@ -375,15 +375,22 @@ async function renderHotdealDetail() {
     const linkMatches = [...htmlText.matchAll(/<link>(.*?)<\/link>/g)];
     const externalLinks = linkMatches.map(m => m[1].trim());
 
+    const originMatch = htmlText.match(/현재 URL:<\/strong>\s*(https?:\/\/[^\s<]+)/);
+    const originUrl = originMatch ? originMatch[1].replace(/&amp;/g, '&') : 'https://hotdeal.zip';
+
     const contentEl = doc.querySelector('content');
     if (contentEl) {
       contentEl.querySelectorAll('img').forEach(img => {
         const src = img.getAttribute('src');
         if (src) {
-          if (src.startsWith('//')) {
-            img.src = 'https:' + src;
-          } else if (src.startsWith('/')) {
-            img.src = 'https://hotdeal.zip' + src;
+          try {
+            img.src = new URL(src, originUrl).href;
+          } catch (e) {
+            if (src.startsWith('//')) {
+              img.src = 'https:' + src;
+            } else if (src.startsWith('/')) {
+              img.src = 'https://hotdeal.zip' + src;
+            }
           }
         }
       });
