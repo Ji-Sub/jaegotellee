@@ -573,7 +573,8 @@ function renderApply() {
 async function submitApply() {
   if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
   try {
-    await sb.from('seller_applications').insert({ user_id: S.user.id, status: 'pending' });
+    const { error } = await sb.from('seller_applications').insert({ user_id: S.user.id, status: 'pending' });
+    if (error) throw error;
     showToast('신청이 접수되었습니다. 검토 후 승인됩니다.');
     navigateTo('feed');
   } catch (e) { showToast('오류: ' + e.message); }
@@ -640,7 +641,7 @@ async function submitPost() {
   const desc = document.getElementById('p-desc')?.value.trim();
   if (!title || !price || !desc) { showToast('필수 항목을 모두 입력해 주세요'); return; }
   try {
-    await sb.from('posts').insert({
+    const { error } = await sb.from('posts').insert({
       title, category: cat, price, description: desc,
       image_url: document.getElementById('p-img')?.value || null,
       purchase_link: document.getElementById('p-link')?.value || null,
@@ -648,7 +649,9 @@ async function submitPost() {
       approved: false,
       views: 0,
       comments_count: 0,
+      user_id: S.user.id
     });
+    if (error) throw error;
     showToast('등록 신청 완료! 관리자 승인 후 공개됩니다.');
     navigateTo('feed');
   } catch (e) { showToast('오류: ' + e.message); }
