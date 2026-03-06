@@ -293,6 +293,25 @@ function toggleExpand(id) {
   renderSidebar();
 }
 
+let isNavigating = false;
+async function navigateTo(page, param = null) {
+  if (isNavigating) return;
+  isNavigating = true;
+  S.page = page;
+  try {
+    if (page === 'feed') await renderFeed();
+    else if (page === 'create') renderCreate();
+    else if (page === 'apply') renderApply();
+    else if (page === 'admin') await renderAdmin();
+    else if (page === 'post') await renderPost(param);
+  } catch (e) {
+    console.error(e);
+    document.getElementById('content').innerHTML = `<div class="empty-state"><h3>오류가 발생했습니다</h3><p>${e.message}</p></div>`;
+  } finally {
+    isNavigating = false;
+  }
+}
+
 function selectCat(id) {
   S.category = id; S.view = 'feed';
   window.location.hash = '#/';
@@ -369,7 +388,7 @@ async function renderDetail() {
 
   el.innerHTML = `
     <div class="post-detail">
-      <a class="btn btn-ghost btn-sm detail-back" onclick="history.back();return false;" href="#">← 목록으로</a>
+      <a class="btn btn-ghost btn-sm detail-back" onclick="history.back();return false;" href="javascript:void(0)">← 목록으로</a>
       ${imgHtml}
       <div class="detail-cat">${esc(getCatLabel(post.category))}</div>
       <h1 class="detail-title">${esc(post.title)}</h1>
@@ -388,7 +407,7 @@ async function renderDetail() {
                <button class="btn btn-primary btn-sm" onclick="submitComment(${post.id})">등록</button>
              </div>`
       : `<p style="font-size:13px;color:var(--text-sub);margin-bottom:16px;">
-               댓글을 남기려면 <a href="#" onclick="showLoginModal();return false;" style="color:var(--primary);font-weight:600;">로그인</a>이 필요합니다.
+               댓글을 남기려면 <a href="javascript:void(0)" onclick="showLoginModal();return false;" style="color:var(--primary);font-weight:600;">로그인</a>이 필요합니다.
              </p>`}
         <div id="comment-list">${commentsHtml}</div>
       </div>
