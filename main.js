@@ -16,28 +16,44 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // CATEGORIES
 // ─────────────────────────────────────────────
 const CATEGORIES = [
-  { id: 'all', label: '모든글', icon: '📋', subs: [] },
-  { id: 'hotdeal', label: '핫딜 모음', icon: '🔥', subs: [] },
+  { id: 'all', label: '모든글', icon: '📋' },
+  { id: 'hotdeal', label: '핫딜 모음', icon: '🔥' },
   {
-    id: 'clearance', label: '히든딜', icon: '🏷️',
+    id: 'clearance', label: '히든딜', icon: '💎',
     subs: [
-      { id: 'meat', label: '육류' },
-      { id: 'processed', label: '육가공' },
-      { id: 'drink', label: '음료' },
-      { id: 'vegetable', label: '채소' },
-      { id: 'fish', label: '생선' },
-      { id: 'fruit', label: '과일' },
+      {
+        id: 'food', label: '식품', icon: '🍖',
+        subs: [
+          { id: 'meat', label: '육류', icon: '🥩' },
+          { id: 'processed', label: '육가공', icon: '🌭' },
+          { id: 'vegetable', label: '채소', icon: '🥦' },
+          { id: 'fruit', label: '과일', icon: '🍊' },
+          { id: 'drink', label: '음료', icon: '🥤' },
+          { id: 'fish', label: '생선', icon: '🐟' },
+        ]
+      },
+      {
+        id: 'health', label: '건강', icon: '💊',
+        subs: [
+          { id: 'supplement', label: '영양제', icon: '💊' },
+        ]
+      },
+      {
+        id: 'living', label: '생활', icon: '🏠',
+        subs: [
+          { id: 'unique', label: '신박한 아이템', icon: '✨' },
+        ]
+      },
+      {
+        id: 'electronics', label: '전자', icon: '💻',
+        subs: [
+          { id: 'device', label: '전자기기', icon: '📱' },
+          { id: 'keyboard', label: '키보드', icon: '⌨️' },
+        ]
+      }
     ]
   },
-  { id: 'supplement', label: '영양제', icon: '💊', subs: [] },
-  { id: 'unique', label: '신박한 아이템', icon: '✨', subs: [] },
-  {
-    id: 'electronics', label: '전자기기', icon: '💻',
-    subs: [
-      { id: 'keyboard', label: '키보드' },
-    ]
-  },
-  { id: 'inquiry', label: '문의', icon: '💬', subs: [] },
+  { id: 'inquiry', label: '문의', icon: '💬' },
 ];
 
 // ─────────────────────────────────────────────
@@ -70,7 +86,7 @@ const S = {
   totalPages: 1,
   totalCount: 0,
   adminTab: 'sellers',  // 'sellers' | 'posts' | 'all'
-  expanded: new Set(['clearance', 'electronics']),
+  expanded: new Set(['clearance', 'food', 'health', 'living', 'electronics']),
   isDemo: false,
 };
 
@@ -92,21 +108,28 @@ try {
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
-function getCatLabel(id) {
-  for (const c of CATEGORIES) {
-    if (c.id === id) return c.label;
-    for (const s of c.subs) if (s.id === id) return s.label;
+
+function findCategory(id, items = CATEGORIES) {
+  for (const c of items) {
+    if (c.id === id) return c;
+    if (c.subs && c.subs.length > 0) {
+      const found = findCategory(id, c.subs);
+      if (found) return found;
+    }
   }
-  return id;
+  return null;
 }
+
+function getCatLabel(id) {
+  const c = findCategory(id);
+  return c ? c.label : id;
+}
+
 function getCatEmoji(id) {
-  const map = {
-    meat: '🥩', processed: '🌭', drink: '🥤', vegetable: '🥦', fish: '🐟', fruit: '🍊',
-    supplement: '💊', unique: '✨', keyboard: '⌨️', mouse: '🖱️', electronics: '💻',
-    hotdeal: '🔥', clearance: '🏷️', all: '📋', inquiry: '💬'
-  };
-  return map[id] || '📦';
+  const c = findCategory(id);
+  return c?.icon || '📦';
 }
+
 function formatDate(iso) {
   if (!iso) return '';
   const d = new Date(iso);
@@ -290,24 +313,35 @@ function renderNav() {
 // ─────────────────────────────────────────────
 // SIDEBAR
 // ─────────────────────────────────────────────
-function renderSidebar() {
+function buildSidebarHtml(cats, depth = 0) {
   let html = '';
-  CATEGORIES.forEach(cat => {
-    const hasKids = cat.subs.length > 0;
-    const expanded = S.expanded.has(cat.id);
-    const active = !hasKids && S.category === cat.id;
-    html += `<div class="sidebar-item${active ? ' active' : ''}"
-        onclick="${hasKids ? `toggleExpand('${cat.id}')` : `selectCat('${cat.id}')`}">
-      <span class="sidebar-icon">${cat.icon}</span>${esc(cat.label)}
-      ${hasKids ? `<span class="sidebar-arrow">${expanded ? '▾' : '▸'}</span>` : ''}
+  cats.forEach(c => {
+    const hasKids = c.subs && c.subs.length > 0;
+    const expanded = S.expanded.has(c.id);
+    const active = !hasKids && S.category === c.id;
+
+    // 18px base horizontal padding from .sidebar-item, add 16px per depth layer
+    const pl = depth === 0 ? '' : `style="padding-left: ${18 + (depth * 16)}px;"`;
+    const iconHtml = c.icon ? `<span class="sidebar-icon">${c.icon}</span>` : '';
+    const arrowHtml = hasKids ? `<span class="sidebar-arrow">${expanded ? '▾' : '▸'}</span>` : '';
+    const subClass = depth > 0 ? ' sidebar-sub' : '';
+    const activeClass = active ? ' active' : '';
+
+    html += `<div class="sidebar-item${activeClass}${subClass}" ${pl}
+        onclick="${hasKids ? `toggleExpand('${c.id}')` : `selectCat('${c.id}')`}">
+      ${iconHtml}${esc(c.label)}
+      ${arrowHtml}
     </div>`;
+
     if (hasKids && expanded) {
-      cat.subs.forEach(s => {
-        html += `<div class="sidebar-item sidebar-sub${S.category === s.id ? ' active' : ''}"
-            onclick="selectCat('${s.id}')">${esc(s.label)}</div>`;
-      });
+      html += buildSidebarHtml(c.subs, depth + 1);
     }
   });
+  return html;
+}
+
+function renderSidebar() {
+  const html = buildSidebarHtml(CATEGORIES);
   document.getElementById('sidebar').innerHTML = html;
   const drawerEl = document.getElementById('drawer');
   if (drawerEl) drawerEl.innerHTML = html;
@@ -967,6 +1001,18 @@ async function submitInquiry() {
 // ─────────────────────────────────────────────
 // CREATE POST
 // ─────────────────────────────────────────────
+function getLeafCategories(items = CATEGORIES) {
+  let leaves = [];
+  for (const c of items) {
+    if (c.subs && c.subs.length > 0) {
+      leaves = leaves.concat(getLeafCategories(c.subs));
+    } else {
+      leaves.push(c);
+    }
+  }
+  return leaves;
+}
+
 function renderCreate() {
   const el = document.getElementById('content');
   if (!S.user) {
@@ -978,8 +1024,9 @@ function renderCreate() {
     return;
   }
 
-  const allSubs = CATEGORIES.flatMap(c => c.subs.length ? c.subs : [c]);
-  const catOptions = allSubs.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+  const leaves = getLeafCategories();
+  const selectable = leaves.filter(c => !['all', 'hotdeal', 'inquiry'].includes(c.id));
+  const catOptions = selectable.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
 
   el.innerHTML = `
     <div class="form-card">
