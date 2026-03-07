@@ -253,6 +253,9 @@ function render() {
 // ─────────────────────────────────────────────
 function renderNav() {
   document.getElementById('navbar').innerHTML = `
+    <button class="mobile-menu-btn" onclick="toggleDrawer()" aria-label="메뉴 열기">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
+    </button>
     <a class="nav-logo" onclick="navigateTo('feed');return false;" href="#/">재고털이</a>
     <div class="nav-right">
       ${S.user ? `
@@ -289,11 +292,33 @@ function renderSidebar() {
     }
   });
   document.getElementById('sidebar').innerHTML = html;
+  const drawerEl = document.getElementById('drawer');
+  if (drawerEl) drawerEl.innerHTML = html;
 }
 
 function toggleExpand(id) {
   S.expanded.has(id) ? S.expanded.delete(id) : S.expanded.add(id);
   renderSidebar();
+}
+
+function toggleDrawer() {
+  const drawer = document.getElementById('drawer');
+  const backdrop = document.getElementById('drawer-backdrop');
+  if (drawer.classList.contains('open')) {
+    closeDrawer();
+  } else {
+    drawer.classList.add('open');
+    backdrop.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  }
+}
+
+function closeDrawer() {
+  const drawer = document.getElementById('drawer');
+  const backdrop = document.getElementById('drawer-backdrop');
+  if (drawer) drawer.classList.remove('open');
+  if (backdrop) backdrop.classList.add('hidden');
+  document.body.style.overflow = '';
 }
 
 let isNavigating = false;
@@ -324,6 +349,7 @@ async function navigateTo(view, param = null) {
 function selectCat(id) {
   S.category = id; S.view = 'feed';
   window.location.hash = '#/';
+  closeDrawer();
   render();
 }
 
