@@ -409,7 +409,7 @@ function renderPagination() {
 // ─────────────────────────────────────────────
 async function fetchHotDeals() {
   try {
-    const res = await fetch(`/ api / hotdeal ? page = ${S.page} `);
+    const res = await fetch(`/api/hotdeal?page=${S.page}`);
     const parsed = await res.json();
     if (parsed && parsed.success) {
       if (parsed.pagination) {
@@ -427,7 +427,7 @@ async function fetchHotDeals() {
 
 async function fetchHotdealDetail(url) {
   try {
-    const res = await fetch(`/ api / hotdeal ? url = ${encodeURIComponent(url)} `);
+    const res = await fetch(`/api/hotdeal?url=${encodeURIComponent(url)}`);
     return await res.text();
   } catch (e) {
     console.error(e);
