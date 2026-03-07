@@ -19,7 +19,7 @@ const CATEGORIES = [
   { id: 'all', label: '모든글', icon: '📋', subs: [] },
   { id: 'hotdeal', label: '핫딜 모음', icon: '🔥', subs: [] },
   {
-    id: 'clearance', label: '재고털이', icon: '🏷️',
+    id: 'clearance', label: '히든딜', icon: '🏷️',
     subs: [
       { id: 'meat', label: '육류' },
       { id: 'processed', label: '육가공' },
@@ -273,7 +273,7 @@ function renderNav() {
     <button class="mobile-menu-btn" onclick="toggleDrawer()" aria-label="메뉴 열기">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></svg>
     </button>
-    <a class="nav-logo" onclick="navigateTo('feed');return false;" href="#/">재고털이</a>
+    <a class="nav-logo" onclick="navigateTo('feed');return false;" href="#/">히든딜</a>
     <div class="nav-right">
       ${S.user ? `
         <span class="nav-user-chip">${esc(S.user.email.split('@')[0])}</span>
@@ -1052,7 +1052,7 @@ function showLoginModal() {
   openModal(`
     <button class="modal-close" onclick="closeModal()">✕</button>
     <div class="modal-title">로그인</div>
-    <div class="modal-subtitle">재고털이에 오신 것을 환영합니다</div>
+    <div class="modal-subtitle">히든딜에 오신 것을 환영합니다</div>
     <div id="modal-err" style="color:#dc2626;font-size:13px;margin-bottom:8px;"></div>
     <div class="form-group">
       <label class="form-label">이메일</label>
