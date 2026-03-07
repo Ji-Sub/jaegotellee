@@ -61,6 +61,8 @@ a {
   color: var(--primary);
   cursor: pointer;
   letter-spacing: -0.5px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .nav-right {
@@ -1022,6 +1024,10 @@ textarea.form-input {
 }
 
 @media (max-width: 480px) {
+  .nav-logo {
+    font-size: 18px;
+  }
+
   .cards-grid {
     grid-template-columns: 1fr;
   }
