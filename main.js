@@ -66,6 +66,8 @@ const S = {
   view: 'feed', // 'feed' | 'detail' | 'admin' | 'apply' | 'create'
   postId: null,
   category: 'all',
+  page: 1,
+  totalPages: 1,
   adminTab: 'sellers',  // 'sellers' | 'posts' | 'all'
   expanded: new Set(['clearance', 'electronics']),
   isDemo: false,
@@ -159,18 +161,26 @@ async function doLogout() {
 // DATA
 // ─────────────────────────────────────────────
 async function fetchPosts(category) {
+  const pageSize = 20;
+  const start = (S.page - 1) * pageSize;
+  const end = start + pageSize - 1;
+
   if (S.isDemo) {
     let p = [...DEMO_POSTS];
     if (category === 'hotdeal') p = p.filter(x => x.is_hot);
     else if (category === 'all') p = p.filter(x => x.category !== 'inquiry');
     else p = p.filter(x => x.category === category);
-    return p;
+    S.totalPages = Math.ceil(p.length / pageSize) || 1;
+    return p.slice(start, start + pageSize);
   }
-  let q = sb.from('posts').select('*').eq('approved', true).order('created_at', { ascending: false });
+  let q = sb.from('posts').select('*', { count: 'exact' }).eq('approved', true).order('created_at', { ascending: false });
   if (category === 'hotdeal') q = q.eq('is_hot', true);
   else if (category === 'all') q = q.neq('category', 'inquiry');
   else q = q.eq('category', category);
-  const { data } = await q;
+
+  q = q.range(start, end);
+  const { data, count } = await q;
+  if (count !== null) S.totalPages = Math.ceil(count / pageSize) || 1;
   return data || [];
 }
 
@@ -349,10 +359,44 @@ async function navigateTo(view, param = null) {
 }
 
 function selectCat(id) {
-  S.category = id; S.view = 'feed';
+  S.category = id;
+  S.page = 1;
+  S.view = 'feed';
   window.location.hash = '#/';
   closeDrawer();
   render();
+}
+
+function goToPage(p) {
+  if (p < 1 || p > S.totalPages || p === S.page) return;
+  S.page = p;
+  render();
+  window.scrollTo(0, 0);
+}
+
+function renderPagination() {
+  if (S.totalPages <= 1) return '';
+  const blockSize = 10;
+  const currentBlock = Math.ceil(S.page / blockSize);
+  const startPage = (currentBlock - 1) * blockSize + 1;
+  let endPage = startPage + blockSize - 1;
+  if (endPage > S.totalPages) endPage = S.totalPages;
+
+  let html = `<div class="pagination">`;
+  if (startPage > 1) {
+    html += `<button class="page-btn" onclick="goToPage(${startPage - 1})">[이전]</button>`;
+  }
+  for (let i = startPage; i <= endPage; i++) {
+    html += `<button class="page-btn ${i === S.page ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
+  }
+  if (endPage < S.totalPages) {
+    html += `<button class="page-btn" onclick="goToPage(${endPage + 1})">[다음]</button>`;
+  }
+  if (S.totalPages > blockSize && S.page < S.totalPages) {
+    html += `<button class="page-btn" onclick="goToPage(${S.totalPages})">[마지막글]</button>`;
+  }
+  html += `</div>`;
+  return html;
 }
 
 // ─────────────────────────────────────────────
@@ -360,9 +404,12 @@ function selectCat(id) {
 // ─────────────────────────────────────────────
 async function fetchHotDeals() {
   try {
-    const res = await fetch(`/api/hotdeal`);
+    const res = await fetch(`/ api / hotdeal ? page = ${S.page} `);
     const parsed = await res.json();
     if (parsed && parsed.success) {
+      if (parsed.pagination) {
+        S.totalPages = Math.ceil(parsed.pagination.total_count / parsed.pagination.per_page) || 1;
+      }
       return parsed.data;
     }
     return [];
@@ -374,7 +421,7 @@ async function fetchHotDeals() {
 
 async function fetchHotdealDetail(url) {
   try {
-    const res = await fetch(`/api/hotdeal?url=${encodeURIComponent(url)}`);
+    const res = await fetch(`/ api / hotdeal ? url = ${encodeURIComponent(url)} `);
     return await res.text();
   } catch (e) {
     console.error(e);
@@ -384,7 +431,7 @@ async function fetchHotdealDetail(url) {
 
 async function renderHotdealDetail() {
   const el = document.getElementById('content');
-  el.innerHTML = `<div class="loading"><div class="spinner"></div> 불러오는 중...</div>`;
+  el.innerHTML = `< div class="loading" > <div class="spinner"></div> 불러오는 중...</div > `;
 
   try {
     const rawParam = decodeURIComponent(S.postId);
@@ -519,6 +566,7 @@ async function renderFeed() {
       <div class="hotdeal-list-container">
         ${listHtml}
       </div>
+      ${renderPagination()}
     `;
     return;
   }
@@ -537,7 +585,8 @@ async function renderFeed() {
       ${canPost ? `<button class="btn btn-primary btn-sm" onclick="navigateTo('create')">+ 글쓰기</button>` : ''}
     </div>
     ${S.isDemo ? `<div class="demo-banner">🔧 <strong>데모 모드</strong> — main.js 상단의 Supabase 키를 입력하면 실제 데이터가 연동됩니다.</div>` : ''}
-    ${cardsHtml}`;
+    ${cardsHtml}
+    ${renderPagination()}`;
 }
 
 function cardHtml(p) {

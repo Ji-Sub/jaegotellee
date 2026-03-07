@@ -988,6 +988,44 @@ textarea.form-input {
   transform: translateX(-50%) translateY(0);
 }
 
+/* ── PAGINATION ── */
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin: 40px 0 20px 0;
+}
+
+.page-btn {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  min-width: 34px;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  background: var(--white);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--ease);
+}
+
+.page-btn:hover {
+  background: var(--bg);
+  border-color: #adb5bd;
+}
+
+.page-btn.active {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+}
+
 /* ── RESPONSIVE ── */
 @media (max-width: 1023px) {
   .mobile-menu-btn {
