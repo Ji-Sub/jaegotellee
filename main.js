@@ -35,9 +35,9 @@ const CATEGORIES = [
     id: 'electronics', label: '전자기기', icon: '💻',
     subs: [
       { id: 'keyboard', label: '키보드' },
-      { id: 'mouse', label: '마우스' },
     ]
   },
+  { id: 'inquiry', label: '문의', icon: '💬', subs: [] },
 ];
 
 // ─────────────────────────────────────────────
@@ -100,7 +100,7 @@ function getCatEmoji(id) {
   const map = {
     meat: '🥩', processed: '🌭', drink: '🥤', vegetable: '🥦', fish: '🐟', fruit: '🍊',
     supplement: '💊', unique: '✨', keyboard: '⌨️', mouse: '🖱️', electronics: '💻',
-    hotdeal: '🔥', clearance: '🏷️', all: '📋'
+    hotdeal: '🔥', clearance: '🏷️', all: '📋', inquiry: '💬'
   };
   return map[id] || '📦';
 }
@@ -162,12 +162,14 @@ async function fetchPosts(category) {
   if (S.isDemo) {
     let p = [...DEMO_POSTS];
     if (category === 'hotdeal') p = p.filter(x => x.is_hot);
-    else if (category !== 'all') p = p.filter(x => x.category === category);
+    else if (category === 'all') p = p.filter(x => x.category !== 'inquiry');
+    else p = p.filter(x => x.category === category);
     return p;
   }
   let q = sb.from('posts').select('*').eq('approved', true).order('created_at', { ascending: false });
   if (category === 'hotdeal') q = q.eq('is_hot', true);
-  else if (category !== 'all') q = q.eq('category', category);
+  else if (category === 'all') q = q.neq('category', 'inquiry');
+  else q = q.eq('category', category);
   const { data } = await q;
   return data || [];
 }
