@@ -68,6 +68,7 @@ const S = {
   category: 'all',
   page: 1,
   totalPages: 1,
+  totalCount: 0,
   adminTab: 'sellers',  // 'sellers' | 'posts' | 'all'
   expanded: new Set(['clearance', 'electronics']),
   isDemo: false,
@@ -173,14 +174,17 @@ async function fetchPosts(category) {
     S.totalPages = Math.ceil(p.length / pageSize) || 1;
     return p.slice(start, start + pageSize);
   }
-  let q = sb.from('posts').select('*', { count: 'exact' }).eq('approved', true).order('created_at', { ascending: false });
+  let q = sb.from('posts').select('*, users(email)', { count: 'exact' }).eq('approved', true).order('created_at', { ascending: false });
   if (category === 'hotdeal') q = q.eq('is_hot', true);
   else if (category === 'all') q = q.neq('category', 'inquiry');
   else q = q.eq('category', category);
 
   q = q.range(start, end);
   const { data, count } = await q;
-  if (count !== null) S.totalPages = Math.ceil(count / pageSize) || 1;
+  if (count !== null) {
+    S.totalCount = count;
+    S.totalPages = Math.ceil(count / pageSize) || 1;
+  }
   return data || [];
 }
 
@@ -409,6 +413,7 @@ async function fetchHotDeals() {
     const parsed = await res.json();
     if (parsed && parsed.success) {
       if (parsed.pagination) {
+        S.totalCount = parsed.pagination.total_count;
         S.totalPages = Math.ceil(parsed.pagination.total_count / parsed.pagination.per_page) || 1;
       }
       return parsed.data;
@@ -580,7 +585,7 @@ async function renderFeed() {
 
   const cardsHtml = posts.length === 0
     ? `<div class="empty-state"><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3><p>${isServerCat ? '질문이나 건의사항을 남겨주세요.' : '곧 새로운 딜이 업로드됩니다.'}</p></div>`
-    : `<div class="cards-grid">${posts.map(p => cardHtml(p)).join('')}</div>`;
+    : (isServerCat ? renderInquiryListHtml(posts) : `<div class="cards-grid">${posts.map(p => cardHtml(p)).join('')}</div>`);
 
   el.innerHTML = `
     <div class="feed-header">
@@ -590,6 +595,50 @@ async function renderFeed() {
     ${S.isDemo ? `<div class="demo-banner">🔧 <strong>데모 모드</strong> — main.js 상단의 Supabase 키를 입력하면 실제 데이터가 연동됩니다.</div>` : ''}
     ${cardsHtml}
     ${renderPagination()}`;
+}
+
+function renderInquiryListHtml(posts) {
+  const pageSize = 20;
+  const startNum = S.totalCount - (S.page - 1) * pageSize;
+
+  let html = `
+    <div class="inquiry-table-container">
+      <table class="inquiry-table">
+        <thead>
+          <tr>
+            <th class="col-num">번호</th>
+            <th class="col-title">제목</th>
+            <th class="col-author">작성자</th>
+            <th class="col-date">작성일</th>
+            <th class="col-views">조회수</th>
+          </tr>
+        </thead>
+        <tbody>
+  `;
+
+  posts.forEach((p, idx) => {
+    const num = startNum - idx;
+    const author = p.users?.email ? p.users.email.split('@')[0] : '익명';
+    // Remove spaces from standard date output "2023. 10. 15" -> "2023.10.15"
+    const date = new Date(p.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/ /g, '').slice(0, -1);
+
+    html += `
+      <tr class="inquiry-row" onclick="navigateTo('detail', '${p.id}')">
+        <td class="col-num">${num}</td>
+        <td class="col-title"><div class="inquiry-title-text">${esc(p.title)}</div></td>
+        <td class="col-author">${esc(author)}</td>
+        <td class="col-date">${date}</td>
+        <td class="col-views">${p.views || 0}</td>
+      </tr>
+    `;
+  });
+
+  html += `
+        </tbody>
+      </table>
+    </div>
+  `;
+  return html;
 }
 
 function cardHtml(p) {

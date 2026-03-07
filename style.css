@@ -988,6 +988,91 @@ textarea.form-input {
   transform: translateX(-50%) translateY(0);
 }
 
+/* ── INQUIRY TABLE ── */
+.inquiry-table-wrapper {
+  margin-top: 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+
+.inquiry-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  min-width: 600px;
+}
+
+.inquiry-table th {
+  padding: 14px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-sub);
+  border-bottom: 2px solid var(--border);
+  background: var(--bg);
+}
+
+.inquiry-table td {
+  padding: 14px 16px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.inquiry-row {
+  cursor: pointer;
+  transition: background var(--ease);
+}
+
+.inquiry-row:hover {
+  background: rgba(255, 255, 255, 0.03);
+  /* subtle hover for dark mode */
+}
+
+.inquiry-row:last-child td {
+  border-bottom: none;
+}
+
+.col-num {
+  width: 60px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.col-title {
+  width: auto;
+  font-weight: 500;
+}
+
+.col-author {
+  width: 120px;
+  color: var(--text-sub);
+}
+
+.col-date {
+  width: 100px;
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.col-views {
+  width: 80px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+.inquiry-title-text {
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 400px;
+}
+
 /* ── PAGINATION ── */
 .pagination {
   display: flex;
@@ -1058,6 +1143,74 @@ textarea.form-input {
 
   .modal {
     padding: 24px 20px;
+  }
+}
+
+@media (max-width: 768px) {
+  .inquiry-table thead {
+    display: none;
+  }
+
+  .inquiry-table-wrapper {
+    background: transparent;
+    border: none;
+  }
+
+  .inquiry-table {
+    min-width: unset;
+  }
+
+  .inquiry-table,
+  .inquiry-table tbody,
+  .inquiry-row,
+  .inquiry-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .inquiry-row {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+    position: relative;
+  }
+
+  .inquiry-table td {
+    padding: 0;
+    border: none;
+    text-align: left;
+  }
+
+  .col-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+
+  .inquiry-title-text {
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .col-num {
+    display: none;
+  }
+
+  .col-author,
+  .col-date,
+  .col-views {
+    display: inline-block;
+    font-size: 12px;
+    color: var(--text-muted);
+    width: auto;
+    margin-right: 12px;
+    margin-top: 4px;
+  }
+
+  .col-views::before {
+    content: "조회 ";
   }
 }
 
