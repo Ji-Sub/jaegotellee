@@ -238,6 +238,7 @@ function handleRoute() {
   else if (h === '#/admin') { S.view = 'admin'; }
   else if (h === '#/apply') { S.view = 'apply'; }
   else if (h === '#/create') { S.view = 'create'; }
+  else if (h === '#/create_inquiry') { S.view = 'create_inquiry'; }
   render();
 }
 
@@ -247,7 +248,7 @@ function handleRoute() {
 function render() {
   renderNav();
   renderSidebar();
-  const views = { feed: renderFeed, detail: renderDetail, hotdeal_detail: renderHotdealDetail, admin: renderAdmin, apply: renderApply, create: renderCreate };
+  const views = { feed: renderFeed, detail: renderDetail, hotdeal_detail: renderHotdealDetail, admin: renderAdmin, apply: renderApply, create: renderCreate, create_inquiry: renderCreateInquiry };
   const viewFn = views[S.view] || renderFeed;
 
   // viewFn is typically an async function. We catch rejections so the UI doesn't hang.
@@ -573,16 +574,18 @@ async function renderFeed() {
 
   const posts = await fetchPosts(S.category);
   const catLabel = getCatLabel(S.category);
-  const canPost = S.role === 'seller' || S.role === 'admin';
+  const isServerCat = S.category === 'inquiry';
+  const canPost = isServerCat ? !!S.user : (S.role === 'seller' || S.role === 'admin');
+  const createPath = isServerCat ? 'create_inquiry' : 'create';
 
   const cardsHtml = posts.length === 0
-    ? `<div class="empty-state"><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3><p>곧 새로운 딜이 업로드됩니다.</p></div>`
+    ? `<div class="empty-state"><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3><p>${isServerCat ? '질문이나 건의사항을 남겨주세요.' : '곧 새로운 딜이 업로드됩니다.'}</p></div>`
     : `<div class="cards-grid">${posts.map(p => cardHtml(p)).join('')}</div>`;
 
   el.innerHTML = `
     <div class="feed-header">
       <h2 class="feed-title">${esc(catLabel)}</h2>
-      ${canPost ? `<button class="btn btn-primary btn-sm" onclick="navigateTo('create')">+ 글쓰기</button>` : ''}
+      ${canPost ? `<button class="btn btn-primary btn-sm" onclick="navigateTo('${createPath}')">+ 글쓰기</button>` : ''}
     </div>
     ${S.isDemo ? `<div class="demo-banner">🔧 <strong>데모 모드</strong> — main.js 상단의 Supabase 키를 입력하면 실제 데이터가 연동됩니다.</div>` : ''}
     ${cardsHtml}
@@ -847,6 +850,67 @@ async function submitApply() {
     showToast('신청이 접수되었습니다. 검토 후 승인됩니다.');
     navigateTo('feed');
   } catch (e) { showToast('오류: ' + e.message); }
+}
+
+// ─────────────────────────────────────────────
+// CREATE INQUIRY
+// ─────────────────────────────────────────────
+function renderCreateInquiry() {
+  const el = document.getElementById('content');
+  if (!S.user) {
+    el.innerHTML = `<div class="form-card"><div class="empty-state"><div class="empty-emoji">🔒</div><h3>로그인이 필요합니다</h3></div></div>`;
+    return;
+  }
+
+  el.innerHTML = `
+    <div class="form-card">
+      <div class="page-header"><h1>문의 등록</h1><p>관리자에게 바로 전송됩니다.</p></div>
+      <div class="form-group">
+        <label class="form-label">제목 *</label>
+        <input class="form-input" id="i-title" type="text" placeholder="문의 제목을 입력하세요">
+      </div>
+      <div class="form-group">
+        <label class="form-label">작성자</label>
+        <input class="form-input" type="text" value="${esc(S.user.email)}" disabled>
+      </div>
+      <div class="form-group">
+        <label class="form-label">내용 *</label>
+        <textarea class="form-input" id="i-desc" style="min-height:130px;" placeholder="문의하시려는 내용을 자세히 적어주세요."></textarea>
+      </div>
+      <button class="btn btn-primary btn-full" onclick="submitInquiry()">등록 하기</button>
+    </div>`;
+}
+
+async function submitInquiry() {
+  const title = document.getElementById('i-title').value.trim();
+  const desc = document.getElementById('i-desc').value.trim();
+  if (!title || !desc) { showToast('제목과 내용을 모두 입력해주세요'); return; }
+
+  if (S.isDemo) {
+    DEMO_POSTS.unshift({ id: Date.now(), title, description: desc, price: '', image_url: null, category: 'inquiry', views: 0, comments_count: 0, approved: true, is_hot: false });
+    showToast('문의가 등록되었습니다 (데모)');
+    selectCat('inquiry');
+    return;
+  }
+
+  const post = {
+    user_id: S.user.id,
+    title,
+    description: desc,
+    category: 'inquiry',
+    price: '',
+    approved: true,
+    is_hot: false
+  };
+
+  try {
+    const { error } = await sb.from('posts').insert(post);
+    if (error) throw error;
+    showToast('문의가 등록되었습니다');
+    selectCat('inquiry');
+  } catch (e) {
+    showToast('오류: ' + e.message);
+  }
 }
 
 // ─────────────────────────────────────────────
