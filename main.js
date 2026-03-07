@@ -898,7 +898,9 @@ async function submitInquiry() {
     title,
     description: desc,
     category: 'inquiry',
-    price: '',
+    price: null,
+    views: 0,
+    comments_count: 0,
     approved: true,
     is_hot: false
   };
