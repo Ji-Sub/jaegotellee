@@ -15,46 +15,44 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // ─────────────────────────────────────────────
 // CATEGORIES
 // ─────────────────────────────────────────────
-const CATEGORIES = [
-  { id: 'hotdeal', label: '핫딜 모음', icon: '🔥' },
-  { id: 'popular', label: '인기딜', icon: '⭐' },
-  {
-    id: 'clearance', label: '히든딜', icon: '💎',
-    subs: [
-      {
-        id: 'food', label: '식품', icon: '🍖',
-        subs: [
-          { id: 'meat', label: '육류', icon: '🥩' },
-          { id: 'processed', label: '육가공', icon: '🌭' },
-          { id: 'vegetable', label: '채소', icon: '🥦' },
-          { id: 'fruit', label: '과일', icon: '🍊' },
-          { id: 'drink', label: '음료', icon: '🥤' },
-          { id: 'fish', label: '생선', icon: '🐟' },
-        ]
-      },
-      {
-        id: 'health', label: '건강', icon: '💊',
-        subs: [
-          { id: 'supplement', label: '영양제', icon: '💊' },
-        ]
-      },
-      {
-        id: 'living', label: '생활', icon: '🏠',
-        subs: [
-          { id: 'unique', label: '신박한 아이템', icon: '✨' },
-        ]
-      },
-      {
-        id: 'electronics', label: '전자', icon: '💻',
-        subs: [
-          { id: 'device', label: '전자기기', icon: '📱' },
-          { id: 'keyboard', label: '키보드', icon: '⌨️' },
-        ]
-      }
-    ]
-  },
-  { id: 'inquiry', label: '문의', icon: '💬' },
-];
+let CATEGORIES = [];
+
+async function loadCategories() {
+  if (S.isDemo) {
+    CATEGORIES = [
+      { id: 'hotdeal', label: '핫딜 모음', icon: '🔥' },
+      { id: 'popular', label: '인기딜', icon: '⭐' },
+      { id: 'inquiry', label: '문의', icon: '💬' }
+    ];
+    return;
+  }
+
+  const { data, error } = await sb.from('categories').select('*').order('sort_order', { ascending: true });
+  if (error || !data) {
+    console.error('Failed to load categories', error);
+    return;
+  }
+
+  const map = {};
+  data.forEach(c => { map[c.id] = { id: c.id, label: c.name, icon: c.icon || '📁', subs: [] }; });
+
+  const tree = [
+    { id: 'hotdeal', label: '핫딜 모음', icon: '🔥' },
+    { id: 'popular', label: '인기딜', icon: '⭐' }
+  ];
+
+  data.forEach(c => {
+    if (c.parent_id) {
+      if (map[c.parent_id]) map[c.parent_id].subs.push(map[c.id]);
+      else tree.push(map[c.id]);
+    } else {
+      tree.push(map[c.id]);
+    }
+  });
+
+  tree.push({ id: 'inquiry', label: '문의', icon: '💬' });
+  CATEGORIES = tree;
+}
 
 // ─────────────────────────────────────────────
 // DEMO DATA  (shown before Supabase is connected)
@@ -128,7 +126,7 @@ function esc(s) {
 
 function findCategory(id, items = CATEGORIES) {
   for (const c of items) {
-    if (c.id === id) return c;
+    if (String(c.id) === String(id)) return c;
     if (c.subs && c.subs.length > 0) {
       const found = findCategory(id, c.subs);
       if (found) return found;
@@ -895,11 +893,12 @@ async function renderAdmin() {
 async function renderAdminContent() {
   const el = document.getElementById('content');
   const tabsHtml = `
-    <div class="page-header"><h1>관리자 대시보드</h1><p>판매자 승인 및 게시글 관리</p></div>
+    <div class="page-header"><h1>관리자 대시보드</h1><p>판매자 승인, 게시글, 카테고리 관리</p></div>
     <div class="admin-tabs">
       <button class="admin-tab${S.adminTab === 'sellers' ? ' active' : ''}" onclick="switchTab('sellers')">판매자 승인</button>
       <button class="admin-tab${S.adminTab === 'posts' ? ' active' : ''}" onclick="switchTab('posts')">게시글 승인</button>
       <button class="admin-tab${S.adminTab === 'all' ? ' active' : ''}" onclick="switchTab('all')">전체 게시글</button>
+      <button class="admin-tab${S.adminTab === 'categories' ? ' active' : ''}" onclick="switchTab('categories')">카테고리 관리</button>
     </div>
     <div id="admin-body"></div>`;
   el.innerHTML = tabsHtml;
@@ -910,7 +909,7 @@ async function switchTab(tab) {
   S.adminTab = tab;
   const tabs = document.querySelectorAll('.admin-tab');
   tabs.forEach(t => t.classList.remove('active'));
-  tabs[['sellers', 'posts', 'all'].indexOf(tab)]?.classList.add('active');
+  tabs[['sellers', 'posts', 'all', 'categories'].indexOf(tab)]?.classList.add('active');
   await renderAdminTab();
 }
 
@@ -957,7 +956,7 @@ async function renderAdminTab() {
           </tbody>
         </table > `;
 
-  } else {
+  } else if (S.adminTab === 'all') {
     const data = await fetchAllPostsAdmin();
     body.innerHTML = data.length === 0
       ? `<div class="empty-state" ><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3></div > `
@@ -966,7 +965,11 @@ async function renderAdminTab() {
           <tbody>${data.map(p => `
             <tr>
               <td>${esc(p.title)}</td>
-              <td>${esc(getCatLabel(p.category))}</td>
+              <td>
+                <select class="form-input" style="width:140px; padding:4px;" onchange="updatePostCategory('${p.id}', this.value)">
+                  ${getCategoryOptionsHtml(p.category)}
+                </select>
+              </td>
               <td><span class="badge ${p.approved ? 'badge-approved' : 'badge-pending'}">${p.approved ? '승인됨' : '대기중'}</span></td>
               <td>${p.views || 0}</td>
               <td><div class="btn-row">
@@ -975,8 +978,96 @@ async function renderAdminTab() {
             </tr>`).join('')}
           </tbody>
         </table > `;
+  } else if (S.adminTab === 'categories') {
+    const { data } = await sb.from('categories').select('*').order('sort_order', { ascending: true });
+
+    // Build Parent Dropdown Options (Root categories)
+    const parentOpts = (data || []).filter(c => !c.parent_id).map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+
+    body.innerHTML = `
+      <div style="margin-bottom: 20px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; background:#f9f9f9; padding:15px; border-radius:8px;">
+        <input type="text" id="new-cat-name" placeholder="카테고리명 (새 카테고리)" class="form-input" style="width:180px;" />
+        <input type="number" id="new-cat-sort" placeholder="순서(숫자)" class="form-input" style="width:100px;" value="1" />
+        <input type="text" id="new-cat-icon" placeholder="아이콘(예:🍎)" class="form-input" style="width:120px;" />
+        <select id="new-cat-parent" class="form-input" style="width:150px;">
+          <option value="">(최상위 대분류)</option>
+          ${parentOpts}
+        </select>
+        <button class="btn btn-primary btn-sm" onclick="addAdminCategory()">추가</button>
+      </div>
+      <table class="admin-table">
+        <thead><tr><th>순서</th><th>유형</th><th>이름</th><th>아이콘</th><th>액션</th></tr></thead>
+        <tbody>
+          ${(data || []).map(c => `
+            <tr>
+              <td>${c.sort_order || 0}</td>
+              <td>${c.parent_id ? '↳ 소분류' : '대분류'}</td>
+              <td>${esc(c.name)}</td>
+              <td>${esc(c.icon || '')}</td>
+              <td><button class="btn btn-danger btn-sm" onclick="deleteAdminCategory('${c.id}')">삭제</button></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
   }
 }
+
+function getCategoryOptionsHtml(selectedCat) {
+  let html = '';
+  function traverse(list, depth = 0) {
+    list.forEach(c => {
+      if (['hotdeal', 'popular', 'inquiry'].includes(c.id)) return;
+      const prefix = '-'.repeat(depth) + (depth > 0 ? ' ' : '');
+      const selected = String(c.id) === String(selectedCat) ? ' selected' : '';
+      html += `<option value="${c.id}"${selected}>${prefix}${esc(c.label)}</option>`;
+      if (c.subs && c.subs.length > 0) traverse(c.subs, depth + 1);
+    });
+  }
+  traverse(CATEGORIES);
+  return html;
+}
+
+window.updatePostCategory = async function (postId, newCategoryId) {
+  if (S.isDemo) { showToast('데모 모드 제한'); return; }
+  const { error } = await sb.from('posts').update({ category: newCategoryId }).eq('id', postId);
+  if (error) { showToast('카테고리 업데이트 실패: ' + error.message); return; }
+  showToast('해당 게시글의 카테고리가 갱신되었습니다.');
+};
+
+window.addAdminCategory = async function () {
+  if (S.isDemo) { showToast('데모 모드 제한'); return; }
+  const name = document.getElementById('new-cat-name').value.trim();
+  const sort_order = parseInt(document.getElementById('new-cat-sort').value) || 0;
+  const icon = document.getElementById('new-cat-icon').value.trim();
+  const parent_id = document.getElementById('new-cat-parent').value.trim() || null;
+
+  if (!name) { showToast('카테고리명을 입력해주세요.'); return; }
+
+  const payload = { name, sort_order, icon };
+  if (parent_id) payload.parent_id = parseInt(parent_id); // parent_id is integer
+
+  const { error } = await sb.from('categories').insert([payload]);
+  if (error) { showToast('추가 실패: ' + error.message); return; }
+
+  showToast('새 카테고리가 추가되었습니다.');
+  await loadCategories();
+  await renderAdminTab();
+  renderNav();
+};
+
+window.deleteAdminCategory = async function (id) {
+  if (S.isDemo) { showToast('데모 모드 제한'); return; }
+  if (!confirm('정말 삭제하시겠습니까?\n하위 카테고리가 있다면 오류가 발생할 수 있습니다.')) return;
+
+  const { error } = await sb.from('categories').delete().eq('id', id);
+  if (error) { showToast('삭제 실패: ' + error.message); return; }
+
+  showToast('데이터가 삭제되었습니다.');
+  await loadCategories();
+  await renderAdminTab();
+  renderNav();
+};
 
 async function approveSeller(appId, userId) {
   if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
@@ -1117,6 +1208,7 @@ async function submitInquiry() {
 function getLeafCategories(items = CATEGORIES) {
   let leaves = [];
   for (const c of items) {
+    if (['hotdeal', 'popular', 'inquiry'].includes(c.id)) continue;
     if (c.subs && c.subs.length > 0) {
       leaves = leaves.concat(getLeafCategories(c.subs));
     } else {
@@ -1269,6 +1361,7 @@ async function modalSignup() {
 // INIT
 // ─────────────────────────────────────────────
 async function init() {
+  await loadCategories();
   if (sb) {
     const { data: { session } } = await sb.auth.getSession();
     if (session) { S.user = session.user; await loadRole(); }
