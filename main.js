@@ -106,6 +106,23 @@ try {
 // ─────────────────────────────────────────────
 // UTILS
 // ─────────────────────────────────────────────
+function formatPrice(val) {
+  if (!val) return '';
+  let str = String(val).trim();
+  str = str.replace(/,/g, ''); // remove commas if any exist
+
+  const match = str.match(/(\d+)/);
+  if (match) {
+    const num = Number(match[1]);
+    str = str.replace(match[1], num.toLocaleString('ko-KR'));
+  }
+
+  if (!str.includes('원')) {
+    str += '원';
+  }
+  return str;
+}
+
 function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -590,7 +607,7 @@ async function renderHotdealDetail() {
         <a class="btn btn-ghost btn-sm detail-back" onclick="history.back();return false;" href="javascript:void(0)">← 목록으로</a>
         <div class="detail-cat">${esc(mall || '')}</div>
         <h1 class="detail-title">${esc(title)}</h1>
-        <div class="detail-price">${esc(price)} ${shipping ? `<span style="font-size:14px;color:var(--text-muted);font-weight:normal;">/ 배송비: ${esc(shipping)}</span>` : ''}</div>
+        <div class="detail-price">${esc(formatPrice(price))} ${shipping ? `<span style="font-size:14px;color:var(--text-muted);font-weight:normal;">/ 배송비: ${esc(shipping)}</span>` : ''}</div>
         <div class="comments-section" style="padding-top:20px;">
           <div class="detail-desc" style="white-space:normal; overflow:hidden;">
             ${contentHtml}
@@ -630,7 +647,7 @@ async function renderFeed() {
             <div class="hotdeal-badge" style="background: ${esc(d.gradient)}">${esc(d.community_name)}</div>
             <h3 class="hotdeal-title">${esc(d.title)}</h3>
             <div class="hotdeal-meta">
-              <span class="hotdeal-price">${esc(d.price)}</span>
+              <span class="hotdeal-price">${esc(formatPrice(d.price))}</span>
               <span class="hotdeal-site">${esc(d.site)}</span>
               <span class="hotdeal-time">${esc(d.time)}</span>
             </div>
@@ -729,7 +746,7 @@ function cardHtml(p) {
         <div class="card-cat">${esc(getCatLabel(p.category))}</div>
         <div class="card-title">${esc(p.title)}</div>
         <div class="card-desc">${esc(p.description)}</div>
-        <div class="card-price">${esc(String(p.price))}</div>
+        <div class="card-price">${esc(formatPrice(p.price))}</div>
         <div class="card-meta">
           <button class="upvote-btn" data-upvote-target="${p.id}" onclick="event.stopPropagation(); toggleUpvote('${p.id}');">
             <span class="upvote-icon">👍</span> <span class="upvote-count">${p.like_count || 0}</span>
@@ -769,7 +786,7 @@ async function renderDetail() {
       ${imgHtml}
       <div class="detail-cat">${esc(getCatLabel(post.category))}</div>
       <h1 class="detail-title">${esc(post.title)}</h1>
-      <div class="detail-price">${esc(String(post.price))}</div>
+      <div class="detail-price">${esc(formatPrice(post.price))}</div>
       <div class="detail-meta">
         ${post.category !== 'inquiry' ? `
         <button class="upvote-btn detail-upvote" data-upvote-target="${post.id}" onclick="toggleUpvote('${post.id}')">
@@ -913,7 +930,7 @@ async function renderAdminTab() {
             <tr>
               <td>${esc(p.title)}</td>
               <td>${esc(getCatLabel(p.category))}</td>
-              <td>${esc(String(p.price))}</td>
+              <td>${esc(formatPrice(p.price))}</td>
               <td><div class="btn-row">
                 <button class="btn btn-success btn-sm" onclick="approvePost('${p.id}')">승인</button>
                 <button class="btn btn-danger btn-sm"  onclick="deletePost('${p.id}')">삭제</button>
