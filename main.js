@@ -289,20 +289,38 @@ async function allPostsHasUpvote(postId) {
 }
 
 window.toggleUpvote = async function (id, elId) {
-  if (!S.user) { showLoginModal(); return; }
+  if (!S.user) {
+    alert('로그인이 필요합니다.');
+    showLoginModal();
+    return;
+  }
   if (S.isDemo) { showToast('데모 모드에선 추천이 제한됩니다.'); return; }
+
   try {
-    const { error } = await sb.rpc('toggle_upvote', { post_id: id });
+    // 1. 유저 정보 (S.user.id) 파라미터로 추가 전달
+    const { error } = await sb.rpc('toggle_upvote', {
+      p_post_id: id,
+      p_user_id: S.user.id
+    });
     if (error) throw error;
-    // Update active state in UI
+
+    // 2. 토글 UI 동기화
     const btns = document.querySelectorAll(`[data-upvote-target="${id}"]`);
     btns.forEach(btn => {
+      // 현재 버튼이 눌린 상태(active)인지 확인
+      const isCurrentlyActive = btn.classList.contains('active');
+
       btn.classList.toggle('active');
       const countSpan = btn.querySelector('.upvote-count');
+
       if (countSpan) {
         let currentCount = parseInt(countSpan.textContent || '0', 10);
-        // The SQL function only increments, so we just add 1
-        countSpan.textContent = currentCount + 1;
+        // 이미 눌린 상태였다면 취소(-1), 아니었다면 추가(+1)
+        if (isCurrentlyActive) {
+          countSpan.textContent = Math.max(0, currentCount - 1);
+        } else {
+          countSpan.textContent = currentCount + 1;
+        }
       }
     });
   } catch (e) {
