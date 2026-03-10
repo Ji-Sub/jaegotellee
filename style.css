@@ -1223,3 +1223,51 @@ textarea.form-input {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── UPVOTE UI ── */
+.upvote-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 8px;
+  margin-right: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-sub);
+  transition: all 0.2s;
+}
+
+.upvote-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--text-muted);
+}
+
+.upvote-btn.active {
+  background: rgba(255, 99, 71, 0.15);
+  /* Light coral hint */
+  border-color: #ff6347;
+  color: #ff6347;
+}
+
+.upvote-btn.active .upvote-icon {
+  transform: scale(1.15);
+}
+
+.upvote-icon {
+  font-size: 14px;
+  transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.detail-upvote {
+  padding: 6px 14px;
+  font-size: 15px;
+  border-width: 1.5px;
+  font-weight: 500;
+}
+
+.detail-upvote .upvote-icon {
+  font-size: 16px;
+}

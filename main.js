@@ -18,6 +18,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const CATEGORIES = [
   { id: 'all', label: '모든글', icon: '📋' },
   { id: 'hotdeal', label: '핫딜 모음', icon: '🔥' },
+  { id: 'popular', label: '인기딜', icon: '⭐' },
   {
     id: 'clearance', label: '히든딜', icon: '💎',
     subs: [
@@ -60,12 +61,12 @@ const CATEGORIES = [
 // DEMO DATA  (shown before Supabase is connected)
 // ─────────────────────────────────────────────
 const DEMO_POSTS = [
-  { id: 1, title: '한우 등심 1++ 재고 대방출', description: '냉동 한우 등심 1++ 등급 정육 재고 대량 방출합니다. 마트 납품 후 남은 물량이라 신선도 보장. 소분 가능합니다.', price: '35,000원/kg', image_url: null, category: 'meat', views: 1284, comments_count: 23, approved: true, is_hot: true },
-  { id: 2, title: '제주 감귤 10kg 박스 — 시즌 마감 특가', description: '이번 시즌 마지막 감귤입니다. 산지 직송, 당도 높은 제주산 감귤 10kg 박스.', price: '18,000원', image_url: null, category: 'fruit', views: 567, comments_count: 8, approved: true, is_hot: false },
-  { id: 3, title: '로지텍 MX Master 3 마우스 재고 처분', description: '리뉴얼로 인한 구모델 재고 처분. 정품 박스 미개봉. 공홈 대비 50% 할인!', price: '55,000원', image_url: null, category: 'mouse', views: 3210, comments_count: 45, approved: true, is_hot: true },
-  { id: 4, title: '단백질 보충제 창고 정리 30% 할인', description: '유통기한 1년 이상 남은 단백질 보충제 대량 방출. 초코·바닐라 각 1kg.', price: '25,000원', image_url: null, category: 'supplement', views: 890, comments_count: 12, approved: true, is_hot: false },
-  { id: 5, title: '수제 햄 & 소시지 박스세트 특가', description: '소량 생산 공방의 수제 햄/소시지 재고. 방부제 없는 건강한 제품, 냉동 보관.', price: '32,000원', image_url: null, category: 'processed', views: 420, comments_count: 6, approved: true, is_hot: false },
-  { id: 6, title: '키크론 K2 키보드 물량 처분 (적축)', description: '리뉴얼 전 구모델 키크론 K2 적축 물량 대방출. 개봉 전 새제품. 맥/윈도우 호환.', price: '79,000원', image_url: null, category: 'keyboard', views: 1875, comments_count: 34, approved: true, is_hot: true },
+  { id: 1, title: '한우 등심 1++ 재고 대방출', description: '냉동 한우 등심 1++ 등급 정육 재고 대량 방출합니다. 마트 납품 후 남은 물량이라 신선도 보장. 소분 가능합니다.', price: '35,000원/kg', image_url: null, category: 'meat', views: 1284, comment_count: 23, approved: true, is_hot: true },
+  { id: 2, title: '제주 감귤 10kg 박스 — 시즌 마감 특가', description: '이번 시즌 마지막 감귤입니다. 산지 직송, 당도 높은 제주산 감귤 10kg 박스.', price: '18,000원', image_url: null, category: 'fruit', views: 567, comment_count: 8, approved: true, is_hot: false },
+  { id: 3, title: '로지텍 MX Master 3 마우스 재고 처분', description: '리뉴얼로 인한 구모델 재고 처분. 정품 박스 미개봉. 공홈 대비 50% 할인!', price: '55,000원', image_url: null, category: 'mouse', views: 3210, comment_count: 45, approved: true, is_hot: true },
+  { id: 4, title: '단백질 보충제 창고 정리 30% 할인', description: '유통기한 1년 이상 남은 단백질 보충제 대량 방출. 초코·바닐라 각 1kg.', price: '25,000원', image_url: null, category: 'supplement', views: 890, comment_count: 12, approved: true, is_hot: false },
+  { id: 5, title: '수제 햄 & 소시지 박스세트 특가', description: '소량 생산 공방의 수제 햄/소시지 재고. 방부제 없는 건강한 제품, 냉동 보관.', price: '32,000원', image_url: null, category: 'processed', views: 420, comment_count: 6, approved: true, is_hot: false },
+  { id: 6, title: '키크론 K2 키보드 물량 처분 (적축)', description: '리뉴얼 전 구모델 키크론 K2 적축 물량 대방출. 개봉 전 새제품. 맥/윈도우 호환.', price: '79,000원', image_url: null, category: 'keyboard', views: 1875, comment_count: 34, approved: true, is_hot: true },
 ];
 
 const DEMO_COMMENTS = [
@@ -199,6 +200,9 @@ async function fetchPosts(category) {
   }
   let q = sb.from('posts').select('*, users(email)', { count: 'exact' }).eq('approved', true).order('created_at', { ascending: false });
   if (category === 'hotdeal') q = q.eq('is_hot', true);
+  else if (category === 'popular') {
+    q = sb.from('posts').select('*, users(email)', { count: 'exact' }).eq('approved', true).gte('like_count', 10).order('like_count', { ascending: false });
+  }
   else if (category === 'all') q = q.neq('category', 'inquiry');
   else q = q.eq('category', category);
 
@@ -229,9 +233,16 @@ async function fetchComments(postId) {
 
 async function addComment(postId, content) {
   if (!S.user) { showLoginModal(); return; }
-  const { error } = await sb.from('comments').insert({ post_id: postId, user_id: S.user.id, content });
-  if (error) throw error;
-  await sb.rpc('increment_comments', { post_id: postId });
+  const { error: insertErr } = await sb.from('comments').insert({ post_id: postId, user_id: S.user.id, content });
+  if (insertErr) throw insertErr;
+
+  const { error: rpcErr } = await sb.rpc('increment_comments', { post_id: postId });
+  if (rpcErr) {
+    console.error('✅ increment_comments RPC Error:', rpcErr);
+    showToast('RPC 오류: ' + rpcErr.message);
+  } else {
+    console.log('✅ increment_comments RPC Success');
+  }
 }
 
 async function fetchPendingSellers() {
@@ -253,6 +264,31 @@ async function fetchAllPostsAdmin() {
   if (error) { showToast('전체 게시글 불러오기 오류: ' + error.message); return []; }
   return data || [];
 }
+
+async function allPostsHasUpvote(postId) {
+  if (!S.user) return false;
+  const { data } = await sb.from('user_upvotes').select('id').eq('post_id', postId).eq('user_id', S.user.id).single();
+  return !!data;
+}
+
+window.toggleUpvote = async function (id, elId) {
+  if (!S.user) { showLoginModal(); return; }
+  if (S.isDemo) { showToast('데모 모드에선 추천이 제한됩니다.'); return; }
+  try {
+    const { data: count, error } = await sb.rpc('toggle_upvote', { p_post_id: id });
+    if (error) throw error;
+    // Update active state in UI
+    const btns = document.querySelectorAll(`[data-upvote-target="${id}"]`);
+    btns.forEach(btn => {
+      btn.classList.toggle('active');
+      const countSpan = btn.querySelector('.upvote-count');
+      if (countSpan) countSpan.textContent = count;
+    });
+  } catch (e) {
+    showToast('추천 처리 중 오류가 발생했습니다.');
+    console.error(e);
+  }
+};
 
 // ─────────────────────────────────────────────
 // ROUTER
@@ -471,7 +507,7 @@ async function fetchHotdealDetail(url) {
 
 async function renderHotdealDetail() {
   const el = document.getElementById('content');
-  el.innerHTML = `< div class="loading" > <div class="spinner"></div> 불러오는 중...</div > `;
+  el.innerHTML = `<div class="loading" > <div class="spinner"></div> 불러오는 중...</div > `;
 
   try {
     const rawParam = decodeURIComponent(S.postId);
@@ -683,7 +719,7 @@ function cardHtml(p) {
     <div class="post-card" onclick="navigateTo('detail','${p.id}')">
       <div class="card-img-wrap">
         ${img}
-        ${p.is_hot ? `<span class="hot-badge">🔥 HOT</span>` : ''}
+        ${(p.is_hot || p.views >= 100 || p.like_count >= 10) ? `<span class="hot-badge">🔥 인기 히든딜</span>` : ''}
       </div>
       <div class="card-body">
         <div class="card-cat">${esc(getCatLabel(p.category))}</div>
@@ -691,7 +727,10 @@ function cardHtml(p) {
         <div class="card-desc">${esc(p.description)}</div>
         <div class="card-price">${esc(String(p.price))}</div>
         <div class="card-meta">
-          <span>💬 ${p.comments_count || 0}</span>
+          <button class="upvote-btn" data-upvote-target="${p.id}" onclick="event.stopPropagation(); toggleUpvote('${p.id}');">
+            <span class="upvote-icon">👍</span> <span class="upvote-count">${p.like_count || 0}</span>
+          </button>
+          <span>💬 ${p.comment_count || 0}</span>
           <span>👁 ${p.views || 0}</span>
         </div>
       </div>
@@ -728,7 +767,12 @@ async function renderDetail() {
       <h1 class="detail-title">${esc(post.title)}</h1>
       <div class="detail-price">${esc(String(post.price))}</div>
       <div class="detail-meta">
-        <span>💬 댓글 ${post.comments_count || 0}개</span>
+        ${post.category !== 'inquiry' ? `
+        <button class="upvote-btn detail-upvote" data-upvote-target="${post.id}" onclick="toggleUpvote('${post.id}')">
+          <span class="upvote-icon">👍</span> <span class="upvote-count">${post.like_count || 0}</span>
+        </button>
+        ` : ''}
+        <span>💬 댓글 <span id="detail-comment-count">${comments.length}</span>개</span>
         <span>👁 조회 ${post.views || 0}회</span>
       </div>
       <div class="detail-desc">${esc(post.description)}</div>
@@ -743,9 +787,18 @@ async function renderDetail() {
       : `<p style="font-size:13px;color:var(--text-sub);margin-bottom:16px;">
                댓글을 남기려면 <a href="javascript:void(0)" onclick="showLoginModal();return false;" style="color:var(--primary);font-weight:600;">로그인</a>이 필요합니다.
              </p>`}
-        <div id="comment-list">${commentsHtml}</div>
-      </div>
     </div>`;
+
+  console.log("--- 댓글 동기화 디버깅 시작 ---");
+  console.log("1. 불러온 comments 배열 길이:", comments.length);
+  const countEl = document.getElementById('detail-comment-count');
+  console.log("2. DOM에서 요소 찾기 결과:", countEl);
+  if (countEl) {
+    countEl.innerText = comments.length;
+    console.log("3. DOM 업데이트 성공!");
+  } else {
+    console.error("3. 치명적 에러: DOM에서 'detail-comment-count' 요소를 찾을 수 없음! 렌더링 타이밍 꼬임.");
+  }
 }
 
 async function submitComment(postId) {
@@ -757,13 +810,34 @@ async function submitComment(postId) {
     await addComment(postId, txt);
     inp.value = '';
     showToast('댓글이 등록되었습니다');
-    const comments = await fetchComments(postId);
-    document.getElementById('comment-list').innerHTML = comments.map(c => `
+    // 화면 즉시 반영 (상태 업데이트): 리스트에 새 댓글 추가
+    const commentList = document.getElementById('comment-list');
+    const author = S.user?.email ? S.user.email.split('@')[0] : '익명';
+    const newCommentHtml = `
       <div class="comment-item">
-        <div class="comment-author">${esc(c.users?.email?.split('@')[0] || '익명')}<span class="comment-time">${formatDate(c.created_at)}</span></div>
-        <div class="comment-content">${esc(c.content)}</div>
-      </div>`).join('');
-  } catch (e) { showToast('오류: ' + e.message); }
+        <div class="comment-author">${esc(author)}<span class="comment-time">${formatDate(new Date().toISOString())}</span></div>
+        <div class="comment-content">${esc(txt)}</div>
+      </div>`;
+
+    if (commentList.innerHTML.includes('아직 댓글이 없습니다')) {
+      commentList.innerHTML = newCommentHtml;
+    } else {
+      commentList.insertAdjacentHTML('beforeend', newCommentHtml);
+    }
+
+    // UI 상태 업데이트 (로컬에서 즉시 댓글 숫자 +1 반영)
+    const countEl = document.getElementById('detail-comment-count');
+    const titleEl = document.querySelector('.comments-title');
+
+    let currentCount = parseInt(countEl?.textContent || '0', 10) + 1;
+
+    if (countEl) countEl.textContent = currentCount;
+    if (titleEl) titleEl.textContent = `댓글 ${currentCount}개`;
+
+  } catch (e) {
+    console.error('댓글 작성 오류:', e);
+    showToast('오류: ' + e.message);
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -804,13 +878,13 @@ async function switchTab(tab) {
 async function renderAdminTab() {
   const body = document.getElementById('admin-body');
   if (!body) return;
-  body.innerHTML = `<div class="loading"><div class="spinner"></div></div>`;
+  body.innerHTML = `<div class="loading" > <div class="spinner"></div></div > `;
 
   if (S.adminTab === 'sellers') {
     const data = await fetchPendingSellers();
     body.innerHTML = data.length === 0
-      ? `<div class="empty-state"><div class="empty-emoji">✅</div><h3>대기 중인 판매자 신청이 없습니다</h3></div>`
-      : `<table class="admin-table">
+      ? `<div class="empty-state" ><div class="empty-emoji">✅</div><h3>대기 중인 판매자 신청이 없습니다</h3></div > `
+      : `<table class="admin-table" >
           <thead><tr><th>이메일</th><th>신청일</th><th>상태</th><th>액션</th></tr></thead>
           <tbody>${data.map(d => `
             <tr>
@@ -823,13 +897,13 @@ async function renderAdminTab() {
               </div></td>
             </tr>`).join('')}
           </tbody>
-        </table>`;
+        </table > `;
 
   } else if (S.adminTab === 'posts') {
     const data = await fetchPendingPosts();
     body.innerHTML = data.length === 0
-      ? `<div class="empty-state"><div class="empty-emoji">✅</div><h3>승인 대기 게시글이 없습니다</h3></div>`
-      : `<table class="admin-table">
+      ? `<div class="empty-state" ><div class="empty-emoji">✅</div><h3>승인 대기 게시글이 없습니다</h3></div > `
+      : `<table class="admin-table" >
           <thead><tr><th>제목</th><th>카테고리</th><th>가격</th><th>액션</th></tr></thead>
           <tbody>${data.map(p => `
             <tr>
@@ -842,13 +916,13 @@ async function renderAdminTab() {
               </div></td>
             </tr>`).join('')}
           </tbody>
-        </table>`;
+        </table > `;
 
   } else {
     const data = await fetchAllPostsAdmin();
     body.innerHTML = data.length === 0
-      ? `<div class="empty-state"><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3></div>`
-      : `<table class="admin-table">
+      ? `<div class="empty-state" ><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3></div > `
+      : `<table class="admin-table" >
           <thead><tr><th>제목</th><th>카테고리</th><th>상태</th><th>조회</th><th>액션</th></tr></thead>
           <tbody>${data.map(p => `
             <tr>
@@ -861,7 +935,7 @@ async function renderAdminTab() {
               </div></td>
             </tr>`).join('')}
           </tbody>
-        </table>`;
+        </table > `;
   }
 }
 
@@ -899,19 +973,19 @@ function renderApply() {
   const el = document.getElementById('content');
   if (!S.user) {
     el.innerHTML = `
-      <div class="form-card">
+      <div class="form-card" >
         <div class="page-header"><h1>판매자 신청</h1><p>판매자가 되어 재고 딜을 올려보세요.</p></div>
         <p style="color:var(--text-sub);margin-bottom:16px;">판매자 신청을 위해 먼저 로그인이 필요합니다.</p>
         <button class="btn btn-primary" onclick="showLoginModal()">로그인하기</button>
-      </div>`;
+      </div > `;
     return;
   }
   if (S.role === 'seller' || S.role === 'admin') {
-    el.innerHTML = `<div class="form-card"><div class="empty-state"><div class="empty-emoji">🎉</div><h3>이미 판매자입니다</h3><p>상단 '+ 글쓰기' 버튼으로 딜을 올려보세요.</p></div></div>`;
+    el.innerHTML = `<div class="form-card" > <div class="empty-state"><div class="empty-emoji">🎉</div><h3>이미 판매자입니다</h3><p>상단 '+ 글쓰기' 버튼으로 딜을 올려보세요.</p></div></div > `;
     return;
   }
   el.innerHTML = `
-    <div class="form-card">
+      <div class="form-card" >
       <div class="page-header"><h1>판매자 신청</h1><p>신청 후 관리자 검토를 거쳐 승인됩니다.</p></div>
       <div class="form-group">
         <label class="form-label">이메일</label>
@@ -922,7 +996,7 @@ function renderApply() {
         <textarea class="form-input" id="apply-desc" placeholder="어떤 재고를 판매하실 예정인지 간략히 적어주세요."></textarea>
       </div>
       <button class="btn btn-primary btn-full" onclick="submitApply()">신청하기</button>
-    </div>`;
+    </div > `;
 }
 
 async function submitApply() {
@@ -941,12 +1015,12 @@ async function submitApply() {
 function renderCreateInquiry() {
   const el = document.getElementById('content');
   if (!S.user) {
-    el.innerHTML = `<div class="form-card"><div class="empty-state"><div class="empty-emoji">🔒</div><h3>로그인이 필요합니다</h3></div></div>`;
+    el.innerHTML = `<div class="form-card" > <div class="empty-state"><div class="empty-emoji">🔒</div><h3>로그인이 필요합니다</h3></div></div > `;
     return;
   }
 
   el.innerHTML = `
-    <div class="form-card">
+      <div class="form-card" >
       <div class="page-header"><h1>문의 등록</h1><p>관리자에게 바로 전송됩니다.</p></div>
       <div class="form-group">
         <label class="form-label">제목 *</label>
@@ -961,7 +1035,7 @@ function renderCreateInquiry() {
         <textarea class="form-input" id="i-desc" style="min-height:130px;" placeholder="문의하시려는 내용을 자세히 적어주세요."></textarea>
       </div>
       <button class="btn btn-primary btn-full" onclick="submitInquiry()">등록 하기</button>
-    </div>`;
+    </div > `;
 }
 
 async function submitInquiry() {
@@ -970,7 +1044,7 @@ async function submitInquiry() {
   if (!title || !desc) { showToast('제목과 내용을 모두 입력해주세요'); return; }
 
   if (S.isDemo) {
-    DEMO_POSTS.unshift({ id: Date.now(), title, description: desc, price: '', image_url: null, category: 'inquiry', views: 0, comments_count: 0, approved: true, is_hot: false });
+    DEMO_POSTS.unshift({ id: Date.now(), title, description: desc, price: '', image_url: null, category: 'inquiry', views: 0, comment_count: 0, approved: true, is_hot: false });
     showToast('문의가 등록되었습니다 (데모)');
     selectCat('inquiry');
     return;
@@ -983,7 +1057,7 @@ async function submitInquiry() {
     category: 'inquiry',
     price: null,
     views: 0,
-    comments_count: 0,
+    comment_count: 0,
     approved: true,
     is_hot: false
   };
@@ -1016,20 +1090,20 @@ function getLeafCategories(items = CATEGORIES) {
 function renderCreate() {
   const el = document.getElementById('content');
   if (!S.user) {
-    el.innerHTML = `<div class="form-card"><div class="empty-state"><div class="empty-emoji">🔒</div><h3>로그인이 필요합니다</h3></div></div>`;
+    el.innerHTML = `<div class="form-card" > <div class="empty-state"><div class="empty-emoji">🔒</div><h3>로그인이 필요합니다</h3></div></div > `;
     return;
   }
   if (S.role !== 'seller' && S.role !== 'admin') {
-    el.innerHTML = `<div class="form-card"><div class="empty-state"><div class="empty-emoji">🚫</div><h3>판매자 계정이 필요합니다</h3><p>판매자 신청 후 관리자 승인이 필요합니다.</p><br><button class="btn btn-primary" onclick="navigateTo('apply')">판매자 신청하기</button></div></div>`;
+    el.innerHTML = `<div class="form-card" > <div class="empty-state"><div class="empty-emoji">🚫</div><h3>판매자 계정이 필요합니다</h3><p>판매자 신청 후 관리자 승인이 필요합니다.</p><br><button class="btn btn-primary" onclick="navigateTo('apply')">판매자 신청하기</button></div></div > `;
     return;
   }
 
   const leaves = getLeafCategories();
   const selectable = leaves.filter(c => !['all', 'hotdeal', 'inquiry'].includes(c.id));
-  const catOptions = selectable.map(s => `<option value="${s.id}">${s.label}</option>`).join('');
+  const catOptions = selectable.map(s => `<option value = "${s.id}" > ${s.label}</option > `).join('');
 
   el.innerHTML = `
-    <div class="form-card">
+      <div class="form-card" >
       <div class="page-header"><h1>딜 등록</h1><p>관리자 승인 후 공개됩니다.</p></div>
       <div class="form-group">
         <label class="form-label">제목 *</label>
@@ -1056,7 +1130,7 @@ function renderCreate() {
         <input class="form-input" id="p-link" type="url" placeholder="https://...">
       </div>
       <button class="btn btn-primary btn-full" onclick="submitPost()">등록 신청</button>
-    </div>`;
+    </div > `;
 }
 
 async function submitPost() {
@@ -1074,7 +1148,7 @@ async function submitPost() {
       is_hot: false,
       approved: false,
       views: 0,
-      comments_count: 0,
+      comment_count: 0,
       user_id: S.user.id
     });
     if (error) throw error;
@@ -1088,7 +1162,7 @@ async function submitPost() {
 // ─────────────────────────────────────────────
 function openModal(html) {
   document.getElementById('modal-backdrop').classList.remove('hidden');
-  document.getElementById('modal-container').innerHTML = `<div class="modal">${html}</div>`;
+  document.getElementById('modal-container').innerHTML = `<div class="modal" > ${html}</div > `;
 }
 function closeModal() {
   document.getElementById('modal-backdrop').classList.add('hidden');
@@ -1097,7 +1171,7 @@ function closeModal() {
 
 function showLoginModal() {
   openModal(`
-    <button class="modal-close" onclick="closeModal()">✕</button>
+      <button class="modal-close" onclick = "closeModal()" >✕</button >
     <div class="modal-title">로그인</div>
     <div class="modal-subtitle">히든딜에 오신 것을 환영합니다</div>
     <div id="modal-err" style="color:#dc2626;font-size:13px;margin-bottom:8px;"></div>
@@ -1117,7 +1191,7 @@ function showLoginModal() {
 
 function showSignupModal() {
   openModal(`
-    <button class="modal-close" onclick="closeModal()">✕</button>
+      <button class="modal-close" onclick = "closeModal()" >✕</button >
     <div class="modal-title">판매자 가입</div>
     <div class="modal-subtitle">가입 후 판매자 신청을 진행해 주세요</div>
     <div id="modal-err" style="color:#dc2626;font-size:13px;margin-bottom:8px;"></div>

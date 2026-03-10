@@ -42,7 +42,7 @@ create table public.posts (
   purchase_link  text,
   category       text not null,
   views          int  default 0,
-  comments_count int  default 0,
+  comment_count int  default 0,
   approved       bool default false,
   is_hot         bool default false,
   created_at     timestamptz default now()
@@ -59,13 +59,13 @@ create table public.comments (
 
 -- Helper functions
 create or replace function increment_views(post_id uuid)
-returns void language sql as $$
-  update posts set views = views + 1 where id = post_id;
+returns void language sql security definer as $$
+  update posts set views = coalesce(views, 0) + 1 where id = post_id;
 $$;
 
 create or replace function increment_comments(post_id uuid)
-returns void language sql as $$
-  update posts set comments_count = comments_count + 1 where id = post_id;
+returns void language sql security definer as $$
+  update posts set comment_count = coalesce(comment_count, 0) + 1 where id = post_id;
 $$;
 ```
 
@@ -96,12 +96,68 @@ create policy "comments_insert" on public.comments for insert with check (auth.u
 alter table public.seller_applications enable row level security;
 create policy "applications_insert" on public.seller_applications for insert with check (auth.uid() = user_id);
 create policy "applications_select" on public.seller_applications for select using (auth.uid() = user_id or auth.uid() is not null);
-create policy "applications_update" on public.seller_applications for update using (auth.uid() is not null);
+-- applications_update (Admin)
+create policy "applications_update_admin" on public.seller_applications for update using (
+  exists (
+    select 1 from public.users
+    where users.id = auth.uid() and users.role = 'admin'
+  )
+);
 ```
 
 ---
 
-## 4. 최초 Admin 계정 설정
+## 4. 추천(Upvote) 및 인기딜(Popular Deals) 추가 기능 스키마
+
+```sql
+-- 1. 기존 posts 테이블에 추천수 컬럼 추가
+alter table public.posts add column if not exists like_count int default 0;
+
+-- 2. 유저의 중복 추천을 막는 기록 테이블
+create table public.user_upvotes (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid references auth.users(id) on delete cascade not null,
+  post_id uuid references public.posts(id) on delete cascade not null,
+  created_at timestamptz default now(),
+  unique(user_id, post_id)
+);
+
+-- 3. RLS 설정 (user_upvotes)
+alter table public.user_upvotes enable row level security;
+create policy "upvotes_select" on public.user_upvotes for select using (true);
+
+-- 4. 추천 토글 함수 (보안 유지 및 원클릭 업데이트용 RPC)
+create or replace function toggle_upvote(p_post_id uuid)
+returns int language plpgsql security definer as $$
+declare
+  v_user uuid := auth.uid();
+  v_exists boolean;
+  v_count int;
+begin
+  if v_user is null then
+    raise exception 'Not authenticated';
+  end if;
+
+  select exists(select 1 from user_upvotes where user_id = v_user and post_id = p_post_id) into v_exists;
+
+  if v_exists then
+    -- 추천 취소
+    delete from user_upvotes where user_id = v_user and post_id = p_post_id;
+    update posts set like_count = coalesce(like_count, 0) - 1 where id = p_post_id returning like_count into v_count;
+  else
+    -- 추천 등록
+    insert into user_upvotes(user_id, post_id) values(v_user, p_post_id);
+    update posts set like_count = coalesce(like_count, 0) + 1 where id = p_post_id returning like_count into v_count;
+  end if;
+
+  return coalesce(v_count, 0);
+end;
+$$;
+```
+
+---
+
+## 5. 최초 Admin 계정 설정
 
 1. 사이트에서 일반 회원가입
 2. Supabase 대시보드 → **Table Editor** → `users` 테이블
