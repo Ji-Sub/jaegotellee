@@ -16,6 +16,7 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // CATEGORIES
 // ─────────────────────────────────────────────
 let CATEGORIES = [];
+let DEFAULT_CATEGORY_ID = null;
 
 async function loadCategories() {
   if (S.isDemo) {
@@ -36,10 +37,7 @@ async function loadCategories() {
   const map = {};
   data.forEach(c => { map[c.id] = { id: c.id, label: c.name, icon: c.icon || '📁', subs: [] }; });
 
-  const tree = [
-    { id: 'hotdeal', label: '핫딜 모음', icon: '🔥' },
-    { id: 'popular', label: '인기딜', icon: '⭐' }
-  ];
+  const tree = [];
 
   data.forEach(c => {
     if (c.parent_id) {
@@ -50,8 +48,11 @@ async function loadCategories() {
     }
   });
 
-  tree.push({ id: 'inquiry', label: '문의', icon: '💬' });
   CATEGORIES = tree;
+
+  // Save default category reference dynamically (fallback '핫딜 모음' or first loaded)
+  const hotdealMap = data.find(c => c.name === '핫딜 모음' || c.name === '핫딜');
+  DEFAULT_CATEGORY_ID = hotdealMap ? String(hotdealMap.id) : (tree[0] ? String(tree[0].id) : null);
 }
 
 // ─────────────────────────────────────────────
@@ -331,7 +332,7 @@ function handleRoute() {
   const h = window.location.hash || '#/';
   if (h === '#/') {
     S.view = 'feed';
-    if (S.category === 'all') S.category = 'hotdeal'; // Fallback if 'all' is somehow sticky
+    if (!S.category || S.category === 'all' || S.category === 'hotdeal') S.category = DEFAULT_CATEGORY_ID;
   }
   else if (h.startsWith('#/post/')) { S.view = 'detail'; S.postId = h.replace('#/post/', ''); }
   else if (h.startsWith('#/hotdeal/')) { S.view = 'hotdeal_detail'; S.postId = h.replace('#/hotdeal/', ''); }
@@ -390,8 +391,8 @@ function buildSidebarHtml(cats, depth = 0) {
   let html = '';
   cats.forEach(c => {
     const hasKids = c.subs && c.subs.length > 0;
-    const expanded = S.expanded.has(c.id);
-    const active = !hasKids && S.category === c.id;
+    const expanded = S.expanded.has(String(c.id));
+    const active = !hasKids && String(S.category) === String(c.id);
 
     // 18px base horizontal padding from .sidebar-item, add 16px per depth layer
     const pl = depth === 0 ? '' : `style="padding-left: ${18 + (depth * 16)}px;"`;
@@ -421,7 +422,8 @@ function renderSidebar() {
 }
 
 function toggleExpand(id) {
-  S.expanded.has(id) ? S.expanded.delete(id) : S.expanded.add(id);
+  const strId = String(id);
+  S.expanded.has(strId) ? S.expanded.delete(strId) : S.expanded.add(strId);
   renderSidebar();
 }
 
@@ -1020,7 +1022,7 @@ function getCategoryOptionsHtml(selectedCat) {
   let html = '';
   function traverse(list, depth = 0) {
     list.forEach(c => {
-      if (['hotdeal', 'popular', 'inquiry'].includes(c.id)) return;
+      if (['hotdeal', 'popular', 'inquiry'].includes(String(c.id))) return;
       const prefix = '-'.repeat(depth) + (depth > 0 ? ' ' : '');
       const selected = String(c.id) === String(selectedCat) ? ' selected' : '';
       html += `<option value="${c.id}"${selected}>${prefix}${esc(c.label)}</option>`;
@@ -1244,7 +1246,7 @@ async function submitInquiry() {
 function getLeafCategories(items = CATEGORIES) {
   let leaves = [];
   for (const c of items) {
-    if (['hotdeal', 'popular', 'inquiry'].includes(c.id)) continue;
+    if (['hotdeal', 'popular', 'inquiry'].includes(String(c.id))) continue;
     if (c.subs && c.subs.length > 0) {
       leaves = leaves.concat(getLeafCategories(c.subs));
     } else {
