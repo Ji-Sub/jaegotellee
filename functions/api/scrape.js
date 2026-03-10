@@ -26,11 +26,16 @@ export async function onRequest(context) {
 
         // 4. Fetch the target feed
         const targetUrl = 'https://hotdeal.zip/api/deals.php?page=1&category=all';
-        const response = await fetch(targetUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-            }
-        });
+        const fetchHeaders = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Referer': 'https://hotdeal.zip/',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+        };
+
+        const response = await fetch(targetUrl, { headers: fetchHeaders });
 
         const feedJson = await response.json();
         if (!feedJson || !feedJson.success || !feedJson.data) {
@@ -51,15 +56,17 @@ export async function onRequest(context) {
         const existingLinks = new Set((existingPosts || []).map(p => p.external_link));
 
         // 6. Process each item
+        const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
+
         for (const item of items) {
             const itemUrl = `https://hotdeal.zip/${item.url}`;
 
+            // Add an artificial random delay (1~3 seconds) to mimic human browsing behavior
+            const randomDelay = Math.floor(Math.random() * 2000) + 1000;
+            await delay(randomDelay);
+
             // A. Extract Real URL & Thumbnail from item page via string parsing
-            const detailRes = await fetch(itemUrl, {
-                headers: {
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-                }
-            });
+            const detailRes = await fetch(itemUrl, { headers: fetchHeaders });
             const htmlText = await detailRes.text();
 
             // Extract Content HTML
