@@ -740,7 +740,7 @@ function cardHtml(p) {
     <div class="post-card" onclick="navigateTo('detail','${p.id}')">
       <div class="card-img-wrap">
         ${img}
-        ${(p.is_hot || p.views >= 100 || p.like_count >= 10) ? `<span class="hot-badge">🔥 인기 히든딜</span>` : ''}
+        ${(p.like_count >= 10) ? `<span class="hot-badge">🔥 인기 히든딜</span>` : ''}
       </div>
       <div class="card-body">
         <div class="card-cat">${esc(getCatLabel(p.category))}</div>
