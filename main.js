@@ -958,9 +958,12 @@ async function renderAdminTab() {
 
   } else if (S.adminTab === 'all') {
     const data = await fetchAllPostsAdmin();
-    body.innerHTML = data.length === 0
-      ? `<div class="empty-state" ><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3></div > `
-      : `<table class="admin-table" >
+    body.innerHTML = `
+      <div style="margin-bottom: 20px; display:flex; justify-content: flex-end;">
+        <button class="btn btn-primary" onclick="triggerScraping()"><i class="fas fa-sync"></i> 핫딜집 크롤링 수동 실행</button>
+      </div>
+      ${data.length === 0 ? `<div class="empty-state" ><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3></div > ` :
+        `<table class="admin-table" >
           <thead><tr><th>제목</th><th>카테고리</th><th>상태</th><th>조회</th><th>액션</th></tr></thead>
           <tbody>${data.map(p => `
             <tr>
@@ -976,8 +979,8 @@ async function renderAdminTab() {
                 <button class="btn btn-danger btn-sm" onclick="deletePost('${p.id}')">삭제</button>
               </div></td>
             </tr>`).join('')}
-          </tbody>
-        </table > `;
+        </table > `}
+    `;
   } else if (S.adminTab === 'categories') {
     const { data } = await sb.from('categories').select('*').order('sort_order', { ascending: true });
 
@@ -1068,6 +1071,39 @@ window.deleteAdminCategory = async function (id) {
   await renderAdminTab();
   renderNav();
 };
+
+window.triggerScraping = async function () {
+  if (S.isDemo) { showToast('데모 모드 제한'); return; }
+
+  const originalHtml = document.querySelector('.btn-primary[onclick="triggerScraping()"]').innerHTML;
+  document.querySelector('.btn-primary[onclick="triggerScraping()"]').innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:5px;"></div> 크롤링 중...';
+
+  // prompt password or secret for manual trigger to match backend expectation
+  const secret = prompt('크롤링을 실행하기 위한 시크릿 키를 입력하세요 (기본: CRON_SECRET):', 'admin_cron_secret');
+  if (!secret) {
+    document.querySelector('.btn-primary[onclick="triggerScraping()"]').innerHTML = originalHtml;
+    return;
+  }
+
+  try {
+    const res = await fetch('/api/scrape?secret=' + encodeURIComponent(secret));
+    if (!res.ok) {
+      let msg = await res.text();
+      throw new Error(msg || 'Network Error');
+    }
+    const data = await res.json();
+    if (data.success) {
+      showToast(`성공: ${data.added}개의 핫딜을 새로 스크래핑 했습니다.`);
+      await renderAdminTab(); // refresh table
+    } else {
+      showToast('스크래핑 실패: ' + (data.error || 'Unknown Error'));
+    }
+  } catch (e) {
+    showToast('오류 발생: ' + e.message);
+  } finally {
+    document.querySelector('.btn-primary[onclick="triggerScraping()"]').innerHTML = originalHtml;
+  }
+}
 
 async function approveSeller(appId, userId) {
   if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
