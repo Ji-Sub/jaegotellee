@@ -998,7 +998,7 @@ async function renderAdminTab() {
           <option value="">(최상위 대분류)</option>
           ${parentOpts}
         </select>
-        <button type="button" class="btn btn-primary btn-sm" onclick="addAdminCategory(event)">추가</button>
+        <button type="button" id="btn-add-admin-category" class="btn btn-primary btn-sm">추가</button>
       </div>
       <table class="admin-table">
         <thead><tr><th>순서</th><th>유형</th><th>이름</th><th>아이콘</th><th>액션</th></tr></thead>
@@ -1042,6 +1042,8 @@ window.updatePostCategory = async function (postId, newCategoryId) {
 
 window.addAdminCategory = async function (e) {
   if (e) e.preventDefault();
+  console.log('버튼 클릭됨: addAdminCategory 실행');
+
   try {
     if (S.isDemo) { alert('데모 모드 등급에서는 카테고리를 추가할 수 없습니다.'); return; }
 
@@ -1084,6 +1086,18 @@ window.addAdminCategory = async function (e) {
     console.error(err);
   }
 };
+
+// Global Event Delegation for Dynamic Elements
+document.addEventListener('click', async function (e) {
+  const addCatBtn = e.target.closest('#btn-add-admin-category');
+  if (addCatBtn) {
+    if (typeof window.addAdminCategory === 'function') {
+      await window.addAdminCategory(e);
+    } else {
+      console.error('addAdminCategory is not globally available');
+    }
+  }
+});
 
 window.deleteAdminCategory = async function (id) {
   if (S.isDemo) { showToast('데모 모드 제한'); return; }
