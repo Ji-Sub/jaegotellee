@@ -998,7 +998,7 @@ async function renderAdminTab() {
           <option value="">(최상위 대분류)</option>
           ${parentOpts}
         </select>
-        <button class="btn btn-primary btn-sm" onclick="addAdminCategory()">추가</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="addAdminCategory(event)">추가</button>
       </div>
       <table class="admin-table">
         <thead><tr><th>순서</th><th>유형</th><th>이름</th><th>아이콘</th><th>액션</th></tr></thead>
@@ -1040,25 +1040,49 @@ window.updatePostCategory = async function (postId, newCategoryId) {
   showToast('해당 게시글의 카테고리가 갱신되었습니다.');
 };
 
-window.addAdminCategory = async function () {
-  if (S.isDemo) { showToast('데모 모드 제한'); return; }
-  const name = document.getElementById('new-cat-name').value.trim();
-  const sort_order = parseInt(document.getElementById('new-cat-sort').value) || 0;
-  const icon = document.getElementById('new-cat-icon').value.trim();
-  const parent_id = document.getElementById('new-cat-parent').value.trim() || null;
+window.addAdminCategory = async function (e) {
+  if (e) e.preventDefault();
+  try {
+    if (S.isDemo) { alert('데모 모드 등급에서는 카테고리를 추가할 수 없습니다.'); return; }
 
-  if (!name) { showToast('카테고리명을 입력해주세요.'); return; }
+    const nameEl = document.getElementById('new-cat-name');
+    const sortEl = document.getElementById('new-cat-sort');
+    const iconEl = document.getElementById('new-cat-icon');
+    const parentEl = document.getElementById('new-cat-parent');
 
-  const payload = { name, sort_order, icon };
-  if (parent_id) payload.parent_id = parseInt(parent_id); // parent_id is integer
+    if (!nameEl || !sortEl || !iconEl || !parentEl) {
+      alert('입력 폼 DOM 요소를 찾을 수 없습니다.');
+      return;
+    }
 
-  const { error } = await sb.from('categories').insert([payload]);
-  if (error) { showToast('추가 실패: ' + error.message); return; }
+    const name = nameEl.value.trim();
+    const sort_order = parseInt(sortEl.value) || 0;
+    const icon = iconEl.value.trim();
+    const parent_id = parentEl.value.trim() || null;
 
-  showToast('새 카테고리가 추가되었습니다.');
-  await loadCategories();
-  await renderAdminTab();
-  renderNav();
+    if (!name) {
+      alert('카테고리명은 필수 항목입니다. 이름을 입력해주세요.');
+      nameEl.focus();
+      return;
+    }
+
+    const payload = { name, sort_order, icon };
+    if (parent_id) payload.parent_id = parseInt(parent_id);
+
+    const { error } = await sb.from('categories').insert([payload]);
+    if (error) {
+      alert('서버 DB 추가 실패: ' + error.message);
+      return;
+    }
+
+    showToast('성공: 새 카테고리가 추가되었습니다.');
+    await loadCategories();
+    await renderAdminTab();
+    renderNav();
+  } catch (err) {
+    alert('에러 발생: 추가 버튼 처리 중 오류가 발생했습니다. (' + err.message + ')');
+    console.error(err);
+  }
 };
 
 window.deleteAdminCategory = async function (id) {
