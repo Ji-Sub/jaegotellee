@@ -275,14 +275,18 @@ window.toggleUpvote = async function (id, elId) {
   if (!S.user) { showLoginModal(); return; }
   if (S.isDemo) { showToast('데모 모드에선 추천이 제한됩니다.'); return; }
   try {
-    const { data: count, error } = await sb.rpc('toggle_upvote', { p_post_id: id });
+    const { error } = await sb.rpc('toggle_upvote', { post_id: id });
     if (error) throw error;
     // Update active state in UI
     const btns = document.querySelectorAll(`[data-upvote-target="${id}"]`);
     btns.forEach(btn => {
       btn.classList.toggle('active');
       const countSpan = btn.querySelector('.upvote-count');
-      if (countSpan) countSpan.textContent = count;
+      if (countSpan) {
+        let currentCount = parseInt(countSpan.textContent || '0', 10);
+        // The SQL function only increments, so we just add 1
+        countSpan.textContent = currentCount + 1;
+      }
     });
   } catch (e) {
     showToast('추천 처리 중 오류가 발생했습니다.');
