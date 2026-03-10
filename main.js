@@ -16,7 +16,6 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 // CATEGORIES
 // ─────────────────────────────────────────────
 const CATEGORIES = [
-  { id: 'all', label: '모든글', icon: '📋' },
   { id: 'hotdeal', label: '핫딜 모음', icon: '🔥' },
   { id: 'popular', label: '인기딜', icon: '⭐' },
   {
@@ -82,7 +81,7 @@ const S = {
   role: null,   // 'user' | 'seller' | 'admin'
   view: 'feed', // 'feed' | 'detail' | 'admin' | 'apply' | 'create'
   postId: null,
-  category: 'all',
+  category: 'hotdeal',
   page: 1,
   totalPages: 1,
   totalCount: 0,
@@ -210,7 +209,6 @@ async function fetchPosts(category) {
   if (S.isDemo) {
     let p = [...DEMO_POSTS];
     if (category === 'hotdeal') p = p.filter(x => x.is_hot);
-    else if (category === 'all') p = p.filter(x => x.category !== 'inquiry');
     else p = p.filter(x => x.category === category);
     S.totalPages = Math.ceil(p.length / pageSize) || 1;
     return p.slice(start, start + pageSize);
@@ -220,7 +218,6 @@ async function fetchPosts(category) {
   else if (category === 'popular') {
     q = sb.from('posts').select('*, users(email)', { count: 'exact' }).eq('approved', true).gte('like_count', 10).order('like_count', { ascending: false });
   }
-  else if (category === 'all') q = q.neq('category', 'inquiry');
   else q = q.eq('category', category);
 
   q = q.range(start, end);
@@ -334,7 +331,10 @@ window.toggleUpvote = async function (id, elId) {
 // ─────────────────────────────────────────────
 function handleRoute() {
   const h = window.location.hash || '#/';
-  if (h === '#/') { S.view = 'feed'; }
+  if (h === '#/') {
+    S.view = 'feed';
+    if (S.category === 'all') S.category = 'hotdeal'; // Fallback if 'all' is somehow sticky
+  }
   else if (h.startsWith('#/post/')) { S.view = 'detail'; S.postId = h.replace('#/post/', ''); }
   else if (h.startsWith('#/hotdeal/')) { S.view = 'hotdeal_detail'; S.postId = h.replace('#/hotdeal/', ''); }
   else if (h === '#/admin') { S.view = 'admin'; }
