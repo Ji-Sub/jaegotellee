@@ -51,6 +51,33 @@ async function runScraper(env) {
     const hotdealCategoryId = catData.id;
     console.log(`[Scraper] category id=${hotdealCategoryId}`);
 
+    // ── Get admin user ID for user_id field (NOT NULL constraint) ──
+    // Try users table with role='admin' first, fallback to first user
+    let adminUserId = null;
+    const { data: adminUser } = await supabase
+        .from('users')
+        .select('id')
+        .eq('role', 'admin')
+        .limit(1)
+        .maybeSingle();
+
+    if (adminUser?.id) {
+        adminUserId = adminUser.id;
+    } else {
+        // Fallback: any first user
+        const { data: firstUser } = await supabase
+            .from('users')
+            .select('id')
+            .limit(1)
+            .maybeSingle();
+        adminUserId = firstUser?.id || null;
+    }
+
+    if (!adminUserId) {
+        throw new Error('관리자 user_id를 찾을 수 없습니다. users 테이블을 확인해주세요.');
+    }
+    console.log(`[Scraper] admin user_id=${adminUserId}`);
+
     // ── Step 1: Fetch feed JSON ───────────────────────────────
     console.log(`[Scraper] Fetching: ${API_URL}`);
     const feedRes = await fetchWithTimeout(API_URL, { headers: API_HEADERS });
@@ -143,6 +170,7 @@ async function runScraper(env) {
             approved: true,
             views: 0,
             comment_count: 0,
+            user_id: adminUserId,
         };
 
         // ② Surface insert errors explicitly
