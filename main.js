@@ -801,7 +801,6 @@ async function renderDetail() {
   el.innerHTML = `
     <div class="post-detail">
       <a class="btn btn-ghost btn-sm detail-back" onclick="history.back();return false;" href="javascript:void(0)">← 목록으로</a>
-      ${imgHtml}
       <div class="detail-cat">${esc(getCatLabel(post.category))}</div>
       <h1 class="detail-title">${esc(post.title)}</h1>
       <div class="detail-price">${esc(formatPrice(post.price))}</div>
@@ -814,8 +813,44 @@ async function renderDetail() {
         <span>💬 댓글 <span id="detail-comment-count">${comments.length}</span>개</span>
         <span>👁 조회 ${post.views || 0}회</span>
       </div>
-      <div class="detail-desc">${esc(post.description)}</div>
-      ${post.purchase_link ? `<a href="${esc(post.purchase_link)}" target="_blank" rel="noopener" class="purchase-btn">🛒 구매하러 가기</a>` : ''}
+
+      ${post.purchase_link ? `
+      <div class="curation-banner" style="
+        background: linear-gradient(135deg, var(--card-bg, #1e1e2e) 0%, rgba(99,102,241,0.12) 100%);
+        border: 1px solid rgba(99,102,241,0.3);
+        border-radius: 16px;
+        padding: 28px 24px;
+        text-align: center;
+        margin: 20px 0;
+      ">
+        <div style="font-size: 2.4rem; margin-bottom: 10px;">🔗</div>
+        <p style="color: var(--text-sub, #aaa); font-size: 14px; margin: 0 0 20px 0; line-height: 1.6;">
+          해당 핫딜의 상세 내용과 이미지는<br>원본 커뮤니티에서 확인할 수 있습니다.
+        </p>
+        <a
+          href="${esc(post.purchase_link)}"
+          target="_blank"
+          rel="noopener noreferrer"
+          style="
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            color: #fff;
+            font-weight: 700;
+            font-size: 16px;
+            padding: 14px 32px;
+            border-radius: 12px;
+            text-decoration: none;
+            box-shadow: 0 4px 20px rgba(99,102,241,0.4);
+            transition: transform 0.15s, box-shadow 0.15s;
+          "
+          onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 28px rgba(99,102,241,0.5)'"
+          onmouseout="this.style.transform='';this.style.boxShadow='0 4px 20px rgba(99,102,241,0.4)'"
+        >📄 원본 게시글 보러가기 ↗</a>
+      </div>
+      ` : `<div class="detail-desc">${esc(post.description || '')}</div>`}
+
       <div class="comments-section">
         <h2 class="comments-title">댓글 ${comments.length}개</h2>
         ${S.user
