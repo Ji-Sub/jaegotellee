@@ -27,43 +27,20 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
 }
 
 // Resolve proxy URLs from hotdealzip to direct community links
+// item.post_url 예시: https://hotdealzip.mycafe24.com/ppomppu_view.php?url=view.php%3Fid%3Dppomppu%26no%3D688916
+// URLSearchParams.get('url')이 %3F→'?', %3D→'=', %26→'&' 자동 디코딩
 function cleanPostUrl(rawUrl) {
     if (!rawUrl) return rawUrl;
     try {
         const u = new URL(rawUrl);
         if (u.hostname !== 'hotdealzip.mycafe24.com') return rawUrl;
 
-        // ── Strategy: extract the 'url' parameter value ──────────────────
-        // Two cases exist in the wild:
-        //   A) Encoded:   ?url=view.php%3Fid%3Dppomppu%26no%3D688824
-        //      → URLSearchParams.get('url') decodes perfectly → "view.php?id=ppomppu&no=688824"
-        //   B) Unencoded: ?url=view.php?id=ppomppu&no=688824
-        //      → URLSearchParams.get('url') only returns "view.php?id=ppomppu" (splits on &)
-        //      → Must extract via raw string slice after '?url=' or '&url='
-
-        // Try encoded path first (URLSearchParams handles percent-decoding)
-        let inner = u.searchParams.get('url'); // works correctly when encoded
-
-        // If the result looks incomplete (no '&' survivors from encoded '&' = '%26'),
-        // fall back to raw string extraction for the unencoded case.
-        // Sign of unencoded case: the raw search still contains '&' after '?url='
-        const rawSearch = u.search; // e.g. "?url=view.php?id=ppomppu&no=688824"
-        const urlIdx = rawSearch.indexOf('url=');
-        if (urlIdx !== -1) {
-            const rawInner = rawSearch.slice(urlIdx + 4); // everything after 'url='
-            // If rawInner contains an unencoded '?' (meaning the inner URL's query wasn't encoded),
-            // the URLSearchParams result will be wrong — use the raw slice instead.
-            if (rawInner.includes('?') || rawInner.includes('%3F') || rawInner.includes('%3f')) {
-                // rawInner may itself be percent-encoded — decode it
-                try { inner = decodeURIComponent(rawInner); } catch (_) { inner = rawInner; }
-            }
-        }
-
+        // URLSearchParams가 percent-encoding을 자동 디코딩해서 반환
+        const inner = u.searchParams.get('url');
         if (!inner) return rawUrl;
 
-        // ── Route by pathname ─────────────────────────────────────────────
         if (u.pathname.includes('ppomppu_view.php')) {
-            // inner is something like "view.php?id=ppomppu&no=688824&page=1"
+            // inner = "view.php?id=ppomppu&no=688916&page=1&divpage=109"
             const finalUrl = 'https://www.ppomppu.co.kr/zboard/' + inner;
             console.log('✅ 세탁 완료된 뽐뿌 링크:', finalUrl);
             return finalUrl;
@@ -77,6 +54,7 @@ function cleanPostUrl(rawUrl) {
     } catch (_) { /* malformed URL — return as-is */ }
     return rawUrl;
 }
+
 
 async function runScraper(env) {
     const supabaseUrl = (env.SUPABASE_URL || '').trim();

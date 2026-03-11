@@ -39,24 +39,12 @@ function cleanPostUrl(rawUrl) {
         const u = new URL(rawUrl);
         if (u.hostname !== 'hotdealzip.mycafe24.com') return rawUrl;
 
-        // 두 가지 포맷에 대응:
-        //   A) 인코딩됨:   ?url=view.php%3Fid%3Dppomppu%26no%3D688824  → URLSearchParams.get() 완벽 처리
-        //   B) 미인코딩: ?url=view.php?id=ppomppu&no=688824           → & 가 파라미터 구분자로 오작동
-        let inner = u.searchParams.get('url');
-
-        const rawSearch = u.search;
-        const urlIdx = rawSearch.indexOf('url=');
-        if (urlIdx !== -1) {
-            const rawInner = rawSearch.slice(urlIdx + 4);
-            // rawInner에 unencoded '?' 가 포함되면 URLSearchParams 결과가 잘린 것 — raw 슬라이싱 사용
-            if (rawInner.includes('?') || rawInner.includes('%3F') || rawInner.includes('%3f')) {
-                try { inner = decodeURIComponent(rawInner); } catch (_) { inner = rawInner; }
-            }
-        }
-
+        // URLSearchParams가 percent-encoding을 자동 디코딩해서 반환
+        const inner = u.searchParams.get('url');
         if (!inner) return rawUrl;
 
         if (u.pathname.includes('ppomppu_view.php')) {
+            // inner = "view.php?id=ppomppu&no=688916&page=1&divpage=109"
             const finalUrl = 'https://www.ppomppu.co.kr/zboard/' + inner;
             console.log('✅ 세탁 완료된 뽐뿌 링크:', finalUrl);
             return finalUrl;
