@@ -985,16 +985,59 @@ async function renderAdminTab() {
     `;
   } else if (S.adminTab === 'categories') {
     const { data } = await sb.from('categories').select('*').order('sort_order', { ascending: true });
+    const rawList = data || [];
 
-    // Build Parent Dropdown Options (Root categories)
-    const parentOpts = (data || []).filter(c => !c.parent_id).map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('');
+    // Build a tree map for the dropdown (all levels, not just root)
+    const mapById = {};
+    rawList.forEach(c => { mapById[c.id] = { ...c, subs: [] }; });
+    const rootTree = [];
+    rawList.forEach(c => {
+      if (c.parent_id && mapById[c.parent_id]) mapById[c.parent_id].subs.push(mapById[c.id]);
+      else if (!c.parent_id) rootTree.push(mapById[c.id]);
+    });
+
+    // Recursive function to build parent dropdown options with visible depth
+    function buildParentOpts(list, depth = 0, ancestors = []) {
+      let opts = '';
+      list.forEach(c => {
+        const label = ancestors.length > 0 ? ancestors.join(' > ') + ' > ' + c.name : c.name;
+        const prefix = '\u00a0'.repeat(depth * 4); // non-breaking space indentation
+        opts += `<option value="${c.id}">${prefix}${c.name}${ancestors.length > 0 ? ' (' + ancestors[ancestors.length - 1] + ' 하위)' : ''}</option>`;
+        if (c.subs && c.subs.length > 0) {
+          opts += buildParentOpts(c.subs, depth + 1, [...ancestors, c.name]);
+        }
+      });
+      return opts;
+    }
+    const parentOpts = buildParentOpts(rootTree);
+
+    // Recursive function to build flat table rows with depth label
+    const depthLabels = ['대분류', '중분류', '소분류', '하위분류'];
+    function buildTableRows(list, depth = 0) {
+      let rows = '';
+      list.forEach(c => {
+        const indent = '\u00a0\u00a0'.repeat(depth * 2);
+        const depthLabel = depthLabels[depth] || `${depth + 1}단계`;
+        const arrow = depth > 0 ? '↳ ' : '';
+        rows += `
+          <tr>
+            <td>${c.sort_order || 0}</td>
+            <td><span style="color: ${depth === 0 ? '#333' : depth === 1 ? '#666' : '#999'}; font-size: ${depth === 0 ? '13px' : '12px'}">${depthLabel}</span></td>
+            <td>${indent}${arrow}${esc(c.name)}</td>
+            <td>${esc(c.icon || '')}</td>
+            <td><button class="btn btn-danger btn-sm" onclick="deleteAdminCategory('${c.id}')">삭제</button></td>
+          </tr>`;
+        if (c.subs && c.subs.length > 0) rows += buildTableRows(c.subs, depth + 1);
+      });
+      return rows;
+    }
 
     body.innerHTML = `
       <div style="margin-bottom: 20px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; background:#f9f9f9; padding:15px; border-radius:8px;">
         <input type="text" id="new-cat-name" placeholder="카테고리명 (새 카테고리)" class="form-input" style="width:180px;" />
         <input type="number" id="new-cat-sort" placeholder="순서(숫자)" class="form-input" style="width:100px;" value="1" />
         <input type="text" id="new-cat-icon" placeholder="아이콘(예:🍎)" class="form-input" style="width:120px;" />
-        <select id="new-cat-parent" class="form-input" style="width:150px;">
+        <select id="new-cat-parent" class="form-input" style="width:220px;">
           <option value="">(최상위 대분류)</option>
           ${parentOpts}
         </select>
@@ -1003,15 +1046,7 @@ async function renderAdminTab() {
       <table class="admin-table">
         <thead><tr><th>순서</th><th>유형</th><th>이름</th><th>아이콘</th><th>액션</th></tr></thead>
         <tbody>
-          ${(data || []).map(c => `
-            <tr>
-              <td>${c.sort_order || 0}</td>
-              <td>${c.parent_id ? '↳ 소분류' : '대분류'}</td>
-              <td>${esc(c.name)}</td>
-              <td>${esc(c.icon || '')}</td>
-              <td><button class="btn btn-danger btn-sm" onclick="deleteAdminCategory('${c.id}')">삭제</button></td>
-            </tr>
-          `).join('')}
+          ${buildTableRows(rootTree)}
         </tbody>
       </table>
     `;
