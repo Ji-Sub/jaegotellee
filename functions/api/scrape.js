@@ -101,17 +101,25 @@ async function runScraper(env) {
     console.log(`[Scraper] Step1: fetching feed API: ${feedApiUrl}`);
 
     const feedRes = await fetchWithTimeout(feedApiUrl, { headers: API_HEADERS });
-    console.log(`[Scraper] Feed API status: ${feedRes.status}`);
+    const feedStatus = feedRes.status;
+    const feedRawText = await feedRes.text(); // read once as text
+    const feedPreview = feedRawText.substring(0, 300).replace(/\n/g, ' ');
+    console.log(`[Scraper] Feed API status: ${feedStatus}, preview: ${feedPreview}`);
 
     if (!feedRes.ok) {
-        throw new Error(`Feed API returned HTTP ${feedRes.status}`);
+        throw new Error(`Feed API HTTP ${feedStatus} | 응답 앞부분: ${feedPreview}`);
     }
 
-    const feedJson = await feedRes.json();
+    let feedJson;
+    try {
+        feedJson = JSON.parse(feedRawText);
+    } catch (e) {
+        throw new Error(`Feed API JSON 파싱 실패. 상태코드: ${feedStatus} | 응답내용: ${feedPreview}`);
+    }
     console.log(`[Scraper] Feed API success: ${feedJson.success}, items: ${feedJson.data?.length ?? 0}`);
 
     if (!feedJson.success || !feedJson.data || feedJson.data.length === 0) {
-        throw new Error('Feed API returned no data. Response: ' + JSON.stringify(feedJson).substring(0, 200));
+        throw new Error(`Feed API 데이터 없음. 상태코드: ${feedStatus} | 응답내용: ${feedPreview}`);
     }
 
     const items = feedJson.data;
