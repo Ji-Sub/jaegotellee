@@ -31,25 +31,49 @@ function cleanPostUrl(rawUrl) {
     if (!rawUrl) return rawUrl;
     try {
         const u = new URL(rawUrl);
-        if (u.hostname === 'hotdealzip.mycafe24.com') {
-            // Extract the raw 'url' param value via string split to preserve inner query params.
-            // URLSearchParams.get('url') would incorrectly split on '&' inside the inner URL
-            // e.g. "?url=view.php?id=ppomppu&no=688824" → get('url') only returns "view.php?id=ppomppu"
-            const rawSearch = u.search; // e.g. "?url=view.php?id=ppomppu&no=688824&page=1"
-            const urlParamMatch = rawSearch.match(/[?&]url=(.+)$/);
-            const inner = urlParamMatch ? decodeURIComponent(urlParamMatch[1]) : null;
+        if (u.hostname !== 'hotdealzip.mycafe24.com') return rawUrl;
 
-            // Ppomppu proxy: hotdealzip.mycafe24.com/ppomppu_view.php?url=view.php?...
-            if (u.pathname.includes('ppomppu_view.php')) {
-                if (inner) return 'https://www.ppomppu.co.kr/zboard/' + inner;
+        // ── Strategy: extract the 'url' parameter value ──────────────────
+        // Two cases exist in the wild:
+        //   A) Encoded:   ?url=view.php%3Fid%3Dppomppu%26no%3D688824
+        //      → URLSearchParams.get('url') decodes perfectly → "view.php?id=ppomppu&no=688824"
+        //   B) Unencoded: ?url=view.php?id=ppomppu&no=688824
+        //      → URLSearchParams.get('url') only returns "view.php?id=ppomppu" (splits on &)
+        //      → Must extract via raw string slice after '?url=' or '&url='
+
+        // Try encoded path first (URLSearchParams handles percent-decoding)
+        let inner = u.searchParams.get('url'); // works correctly when encoded
+
+        // If the result looks incomplete (no '&' survivors from encoded '&' = '%26'),
+        // fall back to raw string extraction for the unencoded case.
+        // Sign of unencoded case: the raw search still contains '&' after '?url='
+        const rawSearch = u.search; // e.g. "?url=view.php?id=ppomppu&no=688824"
+        const urlIdx = rawSearch.indexOf('url=');
+        if (urlIdx !== -1) {
+            const rawInner = rawSearch.slice(urlIdx + 4); // everything after 'url='
+            // If rawInner contains an unencoded '?' (meaning the inner URL's query wasn't encoded),
+            // the URLSearchParams result will be wrong — use the raw slice instead.
+            if (rawInner.includes('?') || rawInner.includes('%3F') || rawInner.includes('%3f')) {
+                // rawInner may itself be percent-encoded — decode it
+                try { inner = decodeURIComponent(rawInner); } catch (_) { inner = rawInner; }
             }
-            // Ruliweb proxy: hotdealzip.mycafe24.com/ruliweb_view.php?url=https://bbs.ruliweb.com/...
-            if (u.pathname.includes('ruliweb_view.php')) {
-                if (inner) return inner; // already a full URL
-            }
-            // Generic mycafe24 proxy fallback: extract any 'url' param that looks like http
-            if (inner && inner.startsWith('http')) return inner;
         }
+
+        if (!inner) return rawUrl;
+
+        // ── Route by pathname ─────────────────────────────────────────────
+        if (u.pathname.includes('ppomppu_view.php')) {
+            // inner is something like "view.php?id=ppomppu&no=688824&page=1"
+            const finalUrl = 'https://www.ppomppu.co.kr/zboard/' + inner;
+            console.log('✅ 세탁 완료된 뽐뿌 링크:', finalUrl);
+            return finalUrl;
+        }
+        if (u.pathname.includes('ruliweb_view.php')) {
+            return inner; // inner is already a full https://bbs.ruliweb.com/... URL
+        }
+        // Generic fallback
+        if (inner.startsWith('http')) return inner;
+
     } catch (_) { /* malformed URL — return as-is */ }
     return rawUrl;
 }
