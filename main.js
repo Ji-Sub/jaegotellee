@@ -481,36 +481,92 @@ function selectCat(id) {
   render();
 }
 
-function goToPage(p) {
-  if (p < 1 || p > S.totalPages || p === S.page) return;
-  S.page = p;
-  render();
-  window.scrollTo(0, 0);
-}
+// pagination functions removed. S.page resets in renderFeed.
+
+window.loadMore = async function() {
+  const btn = document.getElementById('btn-load-more');
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = '불러오는 중...';
+  }
+
+  S.page += 1;
+  const isServerCat = S.category === 'inquiry';
+  
+  if (S.category === 'hotdeal') {
+    const deals = await fetchHotDeals();
+    const container = document.querySelector('.hotdeal-list-container');
+    if (container && deals && deals.length > 0) {
+      const listHtml = deals.map(d => {
+        const detailParam = d.seo_url || d.post_url;
+        return `
+          <a href="javascript:void(0)" onclick="navigateTo('hotdeal_detail', '${encodeURIComponent(detailParam)}')" class="hotdeal-list-item">
+            <img src="${esc(d.thumbnail_url)}" alt="${esc(d.title)}" class="hotdeal-thumb" loading="lazy">
+            <div class="hotdeal-info">
+              <div class="hotdeal-badge" style="background: ${esc(d.gradient)}">${esc(d.community_name)}</div>
+              <h3 class="hotdeal-title">${esc(d.title)}</h3>
+              <div class="hotdeal-meta">
+                <span class="hotdeal-price">${esc(formatPrice(d.price))}</span>
+                <span class="hotdeal-site">${esc(d.site)}</span>
+                <span class="hotdeal-time">${esc(d.time)}</span>
+              </div>
+            </div>
+          </a>
+        `;
+      }).join('');
+      container.insertAdjacentHTML('beforeend', listHtml);
+    }
+  } else {
+    const posts = await fetchPosts(S.category);
+    if (isServerCat) {
+      const tbody = document.querySelector('.inquiry-table tbody');
+      if (tbody && posts && posts.length > 0) {
+        const pageSize = 20;
+        const startNum = S.totalCount - (S.page - 1) * pageSize;
+        let html = '';
+        posts.forEach((p, idx) => {
+          const num = startNum - idx;
+          const author = p.users?.email ? p.users.email.split('@')[0] : '익명';
+          const date = new Date(p.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/ /g, '').slice(0, -1);
+          html += `
+            <tr class="inquiry-row" onclick="navigateTo('detail', '${p.id}')">
+              <td class="col-num">${num}</td>
+              <td class="col-title"><div class="inquiry-title-text">${esc(p.title)}</div></td>
+              <td class="col-author">${esc(author)}</td>
+              <td class="col-date">${date}</td>
+              <td class="col-views">${p.views || 0}</td>
+            </tr>
+          `;
+        });
+        tbody.insertAdjacentHTML('beforeend', html);
+      }
+    } else {
+      const container = document.querySelector('.cards-grid');
+      if (container && posts && posts.length > 0) {
+        const cardsHtml = posts.map(p => cardHtml(p)).join('');
+        container.insertAdjacentHTML('beforeend', cardsHtml);
+      }
+    }
+  }
+
+  const loadMoreContainer = document.getElementById('load-more-container');
+  if (S.page >= S.totalPages) {
+    if (loadMoreContainer) loadMoreContainer.style.display = 'none';
+  } else {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '더보기 <span style="font-size:12px;opacity:0.8;">(다음 20개)</span>';
+    }
+  }
+};
 
 function renderPagination() {
-  if (S.totalPages <= 1) return '';
-  const blockSize = 10;
-  const currentBlock = Math.ceil(S.page / blockSize);
-  const startPage = (currentBlock - 1) * blockSize + 1;
-  let endPage = startPage + blockSize - 1;
-  if (endPage > S.totalPages) endPage = S.totalPages;
-
-  let html = `<div class="pagination">`;
-  if (startPage > 1) {
-    html += `<button class="page-btn" onclick="goToPage(${startPage - 1})">[이전]</button>`;
-  }
-  for (let i = startPage; i <= endPage; i++) {
-    html += `<button class="page-btn ${i === S.page ? 'active' : ''}" onclick="goToPage(${i})">${i}</button>`;
-  }
-  if (endPage < S.totalPages) {
-    html += `<button class="page-btn" onclick="goToPage(${endPage + 1})">[다음]</button>`;
-  }
-  if (S.totalPages > blockSize && S.page < S.totalPages) {
-    html += `<button class="page-btn" onclick="goToPage(${S.totalPages})">[마지막글]</button>`;
-  }
-  html += `</div>`;
-  return html;
+  if (S.totalPages <= 1 || S.page >= S.totalPages) return '';
+  return `
+    <div id="load-more-container" style="text-align: center; margin: 30px 0;">
+      <button id="btn-load-more" class="btn btn-outline" style="width: 100%; max-width: 400px; padding: 14px; border-radius: 12px; font-weight: bold;" onclick="loadMore()">더보기 <span style="font-size:12px;opacity:0.8;">(다음 20개)</span></button>
+    </div>
+  `;
 }
 
 // ─────────────────────────────────────────────
@@ -645,6 +701,7 @@ async function renderHotdealDetail() {
 // FEED
 // ─────────────────────────────────────────────
 async function renderFeed() {
+  S.page = 1;
   const el = document.getElementById('content');
   el.innerHTML = `<div class="loading"><div class="spinner"></div> 불러오는 중...</div>`;
 

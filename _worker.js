@@ -73,12 +73,13 @@ async function runScraper(env) {
     const { data: catData, error: catError } = await supabase
         .from('categories')
         .select('id, name')
-        .eq('name', '핫딜모음')
+        .ilike('name', '%핫딜%')
+        .limit(1)
         .maybeSingle();
 
     if (!catData) {
         const err = catError ? catError.message : '해당 카테고리가 DB에 없습니다';
-        throw new Error(`카테고리 '핫딜모음' 못찾음: ${err}`);
+        throw new Error(`카테고리 '핫딜' 못찾음: ${err}`);
     }
     const hotdealCategoryId = catData.id;
     console.log(`[Scraper] category id=${hotdealCategoryId}`);
