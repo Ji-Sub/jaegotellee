@@ -26,6 +26,34 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
     }
 }
 
+// Resolve proxy URLs from hotdealzip to direct community links
+function cleanPostUrl(rawUrl) {
+    if (!rawUrl) return rawUrl;
+    try {
+        const u = new URL(rawUrl);
+        if (u.hostname === 'hotdealzip.mycafe24.com') {
+            // Extract the raw 'url' param value via string split to preserve inner query params.
+            // URLSearchParams.get('url') would incorrectly split on '&' inside the inner URL
+            // e.g. "?url=view.php?id=ppomppu&no=688824" → get('url') only returns "view.php?id=ppomppu"
+            const rawSearch = u.search; // e.g. "?url=view.php?id=ppomppu&no=688824&page=1"
+            const urlParamMatch = rawSearch.match(/[?&]url=(.+)$/);
+            const inner = urlParamMatch ? decodeURIComponent(urlParamMatch[1]) : null;
+
+            // Ppomppu proxy: hotdealzip.mycafe24.com/ppomppu_view.php?url=view.php?...
+            if (u.pathname.includes('ppomppu_view.php')) {
+                if (inner) return 'https://www.ppomppu.co.kr/zboard/' + inner;
+            }
+            // Ruliweb proxy: hotdealzip.mycafe24.com/ruliweb_view.php?url=https://bbs.ruliweb.com/...
+            if (u.pathname.includes('ruliweb_view.php')) {
+                if (inner) return inner; // already a full URL
+            }
+            // Generic mycafe24 proxy fallback: extract any 'url' param that looks like http
+            if (inner && inner.startsWith('http')) return inner;
+        }
+    } catch (_) { /* malformed URL — return as-is */ }
+    return rawUrl;
+}
+
 async function runScraper(env) {
     const supabaseUrl = (env.SUPABASE_URL || '').trim();
     // Use Service Role Key to bypass RLS — scraper is a server-side bot, not a logged-in user
@@ -126,7 +154,7 @@ async function runScraper(env) {
     for (const item of items) {
         const detailUrl = `https://hotdeal.zip/${item.seo_url}`;
         // ③ post_url → purchase_link (원본 커뮤니티 링크)
-        const purchaseLink = item.post_url || detailUrl;
+        const purchaseLink = cleanPostUrl(item.post_url) || detailUrl;
 
         // Quick in-memory dedup
         if (existingLinks.has(purchaseLink)) {
