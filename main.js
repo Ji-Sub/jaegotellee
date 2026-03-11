@@ -962,7 +962,7 @@ async function renderAdminTab() {
     const data = await fetchAllPostsAdmin();
     body.innerHTML = `
       <div style="margin-bottom: 20px; display:flex; justify-content: flex-end;">
-        <button class="btn btn-primary" onclick="triggerScraping()"><i class="fas fa-sync"></i> 핫딜집 크롤링 수동 실행</button>
+        <button id="btn-deep-scrape" class="btn btn-primary" type="button">🔍 핫딜집 딥크롤링 실행</button>
       </div>
       ${data.length === 0 ? `<div class="empty-state" ><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3></div > ` :
         `<table class="admin-table" >
@@ -1150,35 +1150,43 @@ window.deleteAdminCategory = async function (id) {
 window.triggerScraping = async function () {
   if (S.isDemo) { showToast('데모 모드 제한'); return; }
 
-  const originalHtml = document.querySelector('.btn-primary[onclick="triggerScraping()"]').innerHTML;
-  document.querySelector('.btn-primary[onclick="triggerScraping()"]').innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:5px;"></div> 크롤링 중...';
+  const btn = document.getElementById('btn-deep-scrape');
+  if (!btn) { showToast('버튼을 찾을 수 없습니다.'); return; }
 
-  // prompt password or secret for manual trigger to match backend expectation
-  const secret = prompt('크롤링을 실행하기 위한 시크릿 키를 입력하세요 (기본: CRON_SECRET):', 'admin_cron_secret');
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:5px;"></div> 크롤링 진행 중...';
+
+  const secret = prompt('시크릿 키를 입력하세요 (Cloudflare env의 CRON_SECRET 값):', '');
   if (!secret) {
-    document.querySelector('.btn-primary[onclick="triggerScraping()"]').innerHTML = originalHtml;
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
     return;
   }
 
   try {
     const res = await fetch('/api/scrape?secret=' + encodeURIComponent(secret));
-    if (!res.ok) {
-      let msg = await res.text();
-      throw new Error(msg || 'Network Error');
-    }
     const data = await res.json();
     if (data.success) {
-      showToast(`성공: ${data.added}개의 핫딜을 새로 스크래핑 했습니다.`);
-      await renderAdminTab(); // refresh table
+      showToast(`크롤링 완료: ${data.added}개 추가됨 (중복 건너끨: ${data.skipped || 0}개)`);
+      await renderAdminTab();
     } else {
-      showToast('스크래핑 실패: ' + (data.error || 'Unknown Error'));
+      alert('스크래핑 실패: ' + (data.error || 'Unknown Error'));
     }
   } catch (e) {
-    showToast('오류 발생: ' + e.message);
+    alert('오류 발생: ' + e.message);
   } finally {
-    document.querySelector('.btn-primary[onclick="triggerScraping()"]').innerHTML = originalHtml;
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
   }
-}
+};
+
+// Event delegation for the deep scrape button (dynamically rendered)
+document.addEventListener('click', function (e) {
+  if (e.target.closest('#btn-deep-scrape')) {
+    window.triggerScraping();
+  }
+});
 
 async function approveSeller(appId, userId) {
   if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
