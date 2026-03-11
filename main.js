@@ -1201,15 +1201,10 @@ window.triggerScraping = async function () {
   btn.disabled = true;
   btn.innerHTML = '<div class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:5px;"></div> 크롤링 진행 중...';
 
-  const secret = prompt('시크릿 키를 입력하세요 (Cloudflare env의 CRON_SECRET 값):', '');
-  if (!secret) {
-    btn.disabled = false;
-    btn.innerHTML = originalHtml;
-    return;
-  }
-
   try {
-    const res = await fetch('/api/scrape?secret=' + encodeURIComponent(secret));
+    const res = await fetch('https://jaegotellee.thriller8912.workers.dev/api/scrape?secret=pjs8632365', {
+      method: 'GET',
+    });
     let data;
     try {
       data = await res.json();
