@@ -172,7 +172,7 @@ async function runScraper(env) {
     const supabaseKey = (env.SUPABASE_ANON_KEY || '').trim();
 
     if (!supabaseUrl || !supabaseKey) {
-        throw new Error('SUPABASE_URL 또는 SUPABASE_ANON_KEY 환경변수가 설정되지 않았습니다.');
+        throw new Error(`환경변수 누락. SUPABASE_URL="${supabaseUrl}", KEY 길이=${supabaseKey.length}`);
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -186,7 +186,7 @@ async function runScraper(env) {
 
     if (!catData) {
         const err = catError ? catError.message : '해당 카테고리가 DB에 없습니다';
-        throw new Error(`카테고리 '핫딜모음'을 찾을 수 없습니다. DB 오류: ${err}`);
+        throw new Error(`카테고리 '핫딜모음' 못찾음. DB오류: ${err} | 인식된 URL: ${supabaseUrl}`);
     }
     const hotdealCategoryId = catData.id;
 
