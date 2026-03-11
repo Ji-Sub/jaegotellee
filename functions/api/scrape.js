@@ -167,19 +167,26 @@ function normalizeUrl(url) {
 // ─── Main scraping logic ──────────────────────────────────────
 
 async function runScraper(env) {
-    const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
+    // Trim env vars to prevent whitespace-corrupted URLs (Cloudflare 1016 error)
+    const supabaseUrl = (env.SUPABASE_URL || '').trim();
+    const supabaseKey = (env.SUPABASE_ANON_KEY || '').trim();
 
-    // Get '핫딜모음' category ID — uses ilike to match with or without space
+    if (!supabaseUrl || !supabaseKey) {
+        throw new Error('SUPABASE_URL 또는 SUPABASE_ANON_KEY 환경변수가 설정되지 않았습니다.');
+    }
+
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Get '핫딜모음' category ID — exact match, no wildcard
     const { data: catData, error: catError } = await supabase
         .from('categories')
         .select('id, name')
-        .ilike('name', '핫딜%')
-        .limit(1)
-        .single();
+        .eq('name', '핫딜모음')
+        .maybeSingle();
 
     if (!catData) {
-        const err = catError ? catError.message : 'no rows returned';
-        throw new Error(`카테고리를 찾을 수 없습니다 (핫딜*). DB 오류: ${err}`);
+        const err = catError ? catError.message : '해당 카테고리가 DB에 없습니다';
+        throw new Error(`카테고리 '핫딜모음'을 찾을 수 없습니다. DB 오류: ${err}`);
     }
     const hotdealCategoryId = catData.id;
 
