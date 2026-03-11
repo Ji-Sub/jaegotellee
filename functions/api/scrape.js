@@ -134,7 +134,7 @@ async function runScraper(env) {
         const payload = {
             title: item.title || '제목 없음',
             description: `[${item.category || ''}] ${item.site || ''} - ${item.community_name || ''}`.trim(),
-            price: item.price || '',
+            price: (() => { const n = parseInt((item.price || '').replace(/[^0-9]/g, ''), 10); return isNaN(n) ? 0 : n; })(),
             image_url: item.thumbnail_url || null,
             purchase_link: purchaseLink,
             category: hotdealCategoryId,
@@ -188,14 +188,29 @@ export async function onRequest(context) {
 
     try {
         const result = await runScraper(env);
-        // Surface any insert errors in the response so they appear in the admin UI
+        // If 0 were added AND there are insert errors, surface as 500 so alert fires
+        if (result.added === 0 && result.insertErrors && result.insertErrors.length > 0) {
+            return new Response(JSON.stringify({
+                success: false,
+                error: `Insert 에러 발생 (${result.insertErrors.length}건). 첫번째 에러: ${result.insertErrors[0]}`,
+                ...result,
+            }), {
+                status: 500,
+                headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            });
+        }
         return new Response(JSON.stringify({ success: true, ...result }), {
             headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
         });
     } catch (err) {
         console.error('[Scraper] Fatal:', err.message);
-        return new Response(JSON.stringify({ success: false, error: err.message }), {
-            status: 500, headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        return new Response(JSON.stringify({
+            success: false,
+            error: err.message,
+            stack: err.stack?.substring(0, 300),
+        }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
         });
     }
 }

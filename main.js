@@ -1166,12 +1166,27 @@ window.triggerScraping = async function () {
 
   try {
     const res = await fetch('/api/scrape?secret=' + encodeURIComponent(secret));
-    const data = await res.json();
-    if (data.success) {
-      showToast(`크롤링 완료: ${data.added}개 추가됨 (중복 건너끨: ${data.skipped || 0}개)`);
+    let data;
+    try {
+      data = await res.json();
+    } catch (_) {
+      const raw = await res.text().catch(() => '(응답 없음)');
+      throw new Error(`HTTP ${res.status} — 응답: ${raw.substring(0, 300)}`);
+    }
+
+    if (!res.ok) {
+      // 500 / 401 etc: always show as explicit error
+      alert(`크롤링 에러 (HTTP ${res.status}):\n${data.error || JSON.stringify(data).substring(0, 300)}`);
+    } else if (data.error) {
+      alert(`크롤링 에러:\n${data.error}`);
+    } else if (data.insertErrors && data.insertErrors.length > 0) {
+      alert(`크롤링 부분 완료: ${data.added}개 추가됨\n\nInsert 에러:\n${data.insertErrors.slice(0, 3).join('\n')}`);
+      await renderAdminTab();
+    } else if (data.success) {
+      showToast(`크롤링 완료: ${data.added}개 추가됨 (중복 건너뜀: ${data.skipped || 0}개)`);
       await renderAdminTab();
     } else {
-      alert('스크래핑 실패: ' + (data.error || 'Unknown Error'));
+      alert('스크래핑 실패 (원인 불명): ' + JSON.stringify(data).substring(0, 300));
     }
   } catch (e) {
     alert('오류 발생: ' + e.message);
