@@ -169,15 +169,18 @@ function normalizeUrl(url) {
 async function runScraper(env) {
     const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_ANON_KEY);
 
-    // Get '핫딜 모음' category ID
-    const { data: catData } = await supabase
+    // Get '핫딜모음' category ID — uses ilike to match with or without space
+    const { data: catData, error: catError } = await supabase
         .from('categories')
-        .select('id')
-        .or('name.eq.핫딜 모음,name.eq.핫딜모음,name.eq.핫딜')
+        .select('id, name')
+        .ilike('name', '핫딜%')
         .limit(1)
         .single();
 
-    if (!catData) throw new Error("Category '핫딜 모음' not found in DB. Create it first.");
+    if (!catData) {
+        const err = catError ? catError.message : 'no rows returned';
+        throw new Error(`카테고리를 찾을 수 없습니다 (핫딜*). DB 오류: ${err}`);
+    }
     const hotdealCategoryId = catData.id;
 
     // Step 1: Fetch hotdeal.zip main index (try multiple pages)
