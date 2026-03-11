@@ -28,7 +28,8 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
 
 async function runScraper(env) {
     const supabaseUrl = (env.SUPABASE_URL || '').trim();
-    const supabaseKey = (env.SUPABASE_ANON_KEY || '').trim();
+    // Use Service Role Key to bypass RLS — scraper is a server-side bot, not a logged-in user
+    const supabaseKey = (env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY || '').trim();
 
     if (!supabaseUrl || !supabaseKey) {
         throw new Error(`환경변수 누락. URL="${supabaseUrl}", KEY 길이=${supabaseKey.length}`);
