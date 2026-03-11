@@ -1,173 +1,78 @@
 import { createClient } from '@supabase/supabase-js';
 
 // ─────────────────────────────────────────────────────────────
-// Cloudflare Pages Function: /api/scrape
-//
-// Supports both HTTP trigger (manual) and scheduled trigger (cron).
-// Cron must be configured externally via Supabase pg_cron or similar
-// since CF Pages Functions don't support cron exports natively.
+// hotdeal.zip scraper — uses official internal JSON API for feed
+// + detail page fetch for actual purchase link (a.buy-button)
 // ─────────────────────────────────────────────────────────────
 
-// Human-like request headers to evade bot detection
 const HUMAN_HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
     'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Referer': 'https://www.google.com/',
+    'Referer': 'https://hotdeal.zip/',
     'Cache-Control': 'no-cache',
-    'Pragma': 'no-cache',
-    'Upgrade-Insecure-Requests': '1',
-    'Sec-Fetch-Dest': 'document',
-    'Sec-Fetch-Mode': 'navigate',
-    'Sec-Fetch-Site': 'none',
-    'Sec-Fetch-User': '?1',
-    'Connection': 'keep-alive',
 };
 
-// Random delay between 1~3 seconds
+const API_HEADERS = {
+    ...HUMAN_HEADERS,
+    'Accept': 'application/json, text/plain, */*',
+    'X-Requested-With': 'XMLHttpRequest',
+};
+
 const randomDelay = () => new Promise(r => setTimeout(r, Math.floor(Math.random() * 2000) + 1000));
 
-// Fetch with timeout to avoid hanging
 async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-        const res = await fetch(url, { ...options, signal: controller.signal });
-        return res;
+        return await fetch(url, { ...options, signal: controller.signal });
     } finally {
         clearTimeout(timer);
     }
 }
 
-// ─── HTML Parsing Helpers ─────────────────────────────────────
+// Extract buy link from detail page HTML using known selectors
+function extractBuyLink(html, fallbackUrl) {
+    // Priority 1: a.buy-button (confirmed by browser inspection)
+    const buyMatch = html.match(/class="[^"]*buy-button[^"]*"[^>]*href="([^"]+)"/i)
+        || html.match(/href="([^"]+)"[^>]*class="[^"]*buy-button[^"]*"/i);
+    if (buyMatch?.[1]) return buyMatch[1];
 
-// Extract all article URLs from the hotdeal.zip index page
-function parseIndexItems(html) {
-    const items = [];
+    // Priority 2: a.original-post-link-small (original community link)
+    const origMatch = html.match(/class="[^"]*original-post-link-small[^"]*"[^>]*href="([^"]+)"/i)
+        || html.match(/href="([^"]+)"[^>]*class="[^"]*original-post-link-small[^"]*"/i);
+    if (origMatch?.[1]) return origMatch[1];
 
-    // Matches article list items: <a href="/deal/12345" ...>
-    // hotdeal.zip uses links like /deal/12345 or /bbs/...
-    const linkRegex = /<a\s+[^>]*href="(\/(?:deal|bbs|hotdeal|item)[^\s"]*)"[^>]*>/gi;
-    const titleRegex = /<(?:h2|h3|h4|strong|span)[^>]*class="[^"]*(?:title|subject|tit)[^"]*"[^>]*>([\s\S]*?)<\/(?:h2|h3|h4|strong|span)>/gi;
-    const thumbRegex = /<img[^>]+src="([^"]+)"[^>]*class="[^"]*(?:thumb|thumbnail|image|img)[^"]*"[^>]*/gi;
+    // Priority 3: Any external link (non-hotdeal.zip)
+    const extLinks = [...html.matchAll(/href="(https?:\/\/(?!hotdeal\.zip)[^"]+)"/gi)];
+    const filtered = extLinks
+        .map(m => m[1])
+        .filter(l => !l.includes('google.') && !l.includes('facebook.') && !l.includes('kakao.'));
+    if (filtered.length > 0) return filtered[0];
 
-    // Alternative: parse the generic structure — article cards
-    // Try extracting from typical list elements
-    const articleRegex = /<(?:article|li|div)[^>]*class="[^"]*(?:item|card|deal|post|row)[^"]*"[^>]*>([\s\S]*?)<\/(?:article|li|div)>/gi;
-
-    let articleMatch;
-    while ((articleMatch = articleRegex.exec(html)) !== null) {
-        const block = articleMatch[1];
-
-        // Get href
-        const hrefMatch = block.match(/href="(\/[^"]+)"/);
-        if (!hrefMatch) continue;
-
-        const path = hrefMatch[1];
-        if (path.includes('javascript') || path.includes('#')) continue;
-
-        // Get title
-        const titleMatch = block.match(/<(?:h[1-6]|strong|span|p)[^>]*>([\s\S]*?)<\/(?:h[1-6]|strong|span|p)>/i);
-        const rawTitle = titleMatch ? titleMatch[1].replace(/<[^>]+>/g, '').trim() : '';
-
-        // Get thumbnail
-        const imgMatch = block.match(/<img[^>]+src="([^"]+)"/i);
-        const imgSrc = imgMatch ? normalizeUrl(imgMatch[1]) : null;
-
-        if (rawTitle && path) {
-            items.push({
-                url: `https://hotdeal.zip${path}`,
-                title: rawTitle,
-                thumbnail: imgSrc,
-            });
-        }
-    }
-
-    return items;
+    return fallbackUrl;
 }
 
-// Deep parse a detail article page for content and external link
-function parseDetailPage(html, itemUrl) {
-    // ── External (purchase) link ──────────────────────────────
-    // hotdeal.zip typically has a buy button with class like "btn-buy", "go-link", "ext-link"
-    // or a meta redirect / specific anchor
-    let externalLink = null;
-
-    const buyLinkPatterns = [
-        /href="(https?:\/\/(?!hotdeal\.zip)[^"]+)"[^>]*(?:class|id)="[^"]*(?:buy|purchase|go|link|ext|shop|order|pay)[^"]*"/i,
-        /(?:class|id)="[^"]*(?:buy|purchase|go|link|ext|shop|order|pay)[^"]*"[^>]*href="(https?:\/\/(?!hotdeal\.zip)[^"]+)"/i,
-        /<a[^>]+href="(https?:\/\/(?:www\.coupang|smartstore\.naver|gmarket|auction|11st|wemakeprice|tmon|interpark|link\.coupang|coupa\.ng)[^"]+)"/i,
-    ];
-
-    for (const pattern of buyLinkPatterns) {
-        const m = html.match(pattern);
-        if (m && m[1]) {
-            externalLink = m[1];
-            break;
-        }
+// Extract plain text description from detail page
+function extractDescription(html) {
+    // Try to find the main content section
+    const contentMatch = html.match(/class="[^"]*(?:deal-content|post-content|content|view)[^"]*"[^>]*>([\s\S]{20,500}?)(?:<\/div>|$)/i);
+    if (contentMatch) {
+        return contentMatch[1]
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .substring(0, 200);
     }
-
-    // Fallback: find any non-hotdeal external link
-    if (!externalLink) {
-        const allLinks = [...html.matchAll(/href="(https?:\/\/(?!hotdeal\.zip)[^"]+)"/gi)];
-        const filtered = allLinks
-            .map(m => m[1])
-            .filter(l => !l.includes('google') && !l.includes('facebook') && !l.includes('kakao') && !l.includes('naver.com/'));
-        if (filtered.length > 0) externalLink = filtered[0];
-    }
-
-    // ── Content HTML ──────────────────────────────────────────
-    // Try to find main content area
-    let contentHtml = '';
-    const contentPatterns = [
-        /<div[^>]+class="[^"]*(?:content|article-body|post-content|view-content|bd-content|deal-content)[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
-        /<div[^>]+id="[^"]*(?:content|article|post|view|body)[^"]*"[^>]*>([\s\S]*?)<\/div>/i,
-        /<article[^>]*>([\s\S]*?)<\/article>/i,
-    ];
-    for (const pattern of contentPatterns) {
-        const m = html.match(pattern);
-        if (m && m[1] && m[1].length > 50) {
-            contentHtml = m[1];
-            break;
-        }
-    }
-
-    // ── Thumbnail ─────────────────────────────────────────────
-    // Try OG image first as it's the most reliable
-    let thumbnail = null;
-    const ogImgMatch = html.match(/<meta[^>]+property="og:image"[^>]+content="([^"]+)"/i)
-        || html.match(/<meta[^>]+content="([^"]+)"[^>]+property="og:image"/i);
-    if (ogImgMatch) thumbnail = ogImgMatch[1];
-
-    if (!thumbnail && contentHtml) {
-        const imgMatch = contentHtml.match(/<img[^>]+src="([^"]+)"/i);
-        if (imgMatch) thumbnail = normalizeUrl(imgMatch[1]);
-    }
-
-    // ── Plain text description (first 200 chars) ──────────────
-    const plainText = contentHtml
-        .replace(/<script[\s\S]*?<\/script>/gi, '')
-        .replace(/<style[\s\S]*?<\/style>/gi, '')
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .substring(0, 200);
-
-    return { externalLink: externalLink || itemUrl, contentHtml, thumbnail, description: plainText };
-}
-
-function normalizeUrl(url) {
-    if (!url) return null;
-    if (url.startsWith('//')) return 'https:' + url;
-    if (url.startsWith('/')) return 'https://hotdeal.zip' + url;
-    return url;
+    // Fallback: og:description
+    const ogDesc = html.match(/<meta[^>]+(?:name="description"|property="og:description")[^>]+content="([^"]+)"/i)
+        || html.match(/content="([^"]+)"[^>]+(?:name="description"|property="og:description")/i);
+    return ogDesc?.[1]?.trim().substring(0, 200) || '';
 }
 
 // ─── Main scraping logic ──────────────────────────────────────
 
 async function runScraper(env) {
-    // Trim env vars to prevent whitespace-corrupted URLs (Cloudflare 1016 error)
     const supabaseUrl = (env.SUPABASE_URL || '').trim();
     const supabaseKey = (env.SUPABASE_ANON_KEY || '').trim();
 
@@ -177,7 +82,7 @@ async function runScraper(env) {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Get '핫딜모음' category ID — exact match, no wildcard
+    // Get '핫딜모음' category ID — exact match
     const { data: catData, error: catError } = await supabase
         .from('categories')
         .select('id, name')
@@ -189,88 +94,105 @@ async function runScraper(env) {
         throw new Error(`카테고리 '핫딜모음' 못찾음. DB오류: ${err} | 인식된 URL: ${supabaseUrl}`);
     }
     const hotdealCategoryId = catData.id;
+    console.log(`[Scraper] category id: ${hotdealCategoryId}`);
 
-    // Step 1: Fetch hotdeal.zip main index (try multiple pages)
-    const feedUrl = 'https://hotdeal.zip/';
-    console.log(`[Scraper] Fetching feed: ${feedUrl}`);
+    // ── Step 1: Fetch feed via internal JSON API ───────────────
+    const feedApiUrl = 'https://hotdeal.zip/api/deals.php?page=1&category=all';
+    console.log(`[Scraper] Step1: fetching feed API: ${feedApiUrl}`);
 
-    const feedRes = await fetchWithTimeout(feedUrl, { headers: HUMAN_HEADERS });
-    if (!feedRes.ok) throw new Error(`Feed fetch failed: ${feedRes.status}`);
+    const feedRes = await fetchWithTimeout(feedApiUrl, { headers: API_HEADERS });
+    console.log(`[Scraper] Feed API status: ${feedRes.status}`);
 
-    const feedHtml = await feedRes.text();
-    let items = parseIndexItems(feedHtml);
-
-    if (items.length === 0) {
-        // Fallback: scrape raw <a> tags pointing to article paths
-        const rawLinks = [...feedHtml.matchAll(/href="(\/(?:deal|bbs|hotdeal|item|view|post)[^"?#]+)"/gi)];
-        const uniquePaths = [...new Set(rawLinks.map(m => m[1]))].slice(0, 20);
-        items = uniquePaths.map(p => ({ url: `https://hotdeal.zip${p}`, title: '', thumbnail: null }));
+    if (!feedRes.ok) {
+        throw new Error(`Feed API returned HTTP ${feedRes.status}`);
     }
 
-    console.log(`[Scraper] Found ${items.length} items on index`);
+    const feedJson = await feedRes.json();
+    console.log(`[Scraper] Feed API success: ${feedJson.success}, items: ${feedJson.data?.length ?? 0}`);
 
-    // Build deduplication set from recent DB entries
+    if (!feedJson.success || !feedJson.data || feedJson.data.length === 0) {
+        throw new Error('Feed API returned no data. Response: ' + JSON.stringify(feedJson).substring(0, 200));
+    }
+
+    const items = feedJson.data;
+
+    // ── Deduplication: load recent external links from DB ──────
     const { data: existingPosts } = await supabase
         .from('posts')
         .select('external_link')
         .eq('category', hotdealCategoryId)
         .order('created_at', { ascending: false })
-        .limit(200);
+        .limit(300);
 
     const existingLinks = new Set((existingPosts || []).map(p => p.external_link).filter(Boolean));
+    console.log(`[Scraper] Existing links in DB: ${existingLinks.size}`);
 
     let addedCount = 0;
     let skippedCount = 0;
 
-    // Step 2: Deep crawl each article
-    for (const item of items.slice(0, 15)) { // limit per run to avoid CF timeout
-        // Human delay between requests
-        await randomDelay();
+    // ── Step 2: Deep crawl each article for buy link ──────────
+    // Limit to 15 per run to avoid Cloudflare 50s CPU timeout
+    for (const item of items.slice(0, 15)) {
+        const detailUrl = `https://hotdeal.zip/${item.seo_url}`;
 
-        console.log(`[Scraper] Deep crawling: ${item.url}`);
+        // The feed already gives us the source community post URL (post_url)
+        // We treat post_url as the primary external link
+        // But we also try fetching detail page for dedicated buy button
+        const feedExternalLink = item.post_url || detailUrl;
 
-        let detailHtml = '';
-        try {
-            const detailRes = await fetchWithTimeout(item.url, { headers: { ...HUMAN_HEADERS, 'Referer': 'https://hotdeal.zip/' } });
-            if (!detailRes.ok) {
-                console.warn(`[Scraper] Detail fetch failed ${detailRes.status} for ${item.url}`);
-                continue;
-            }
-            detailHtml = await detailRes.text();
-        } catch (e) {
-            console.warn(`[Scraper] Detail fetch error: ${e.message}`);
-            continue;
-        }
-
-        const { externalLink, contentHtml, thumbnail, description } = parseDetailPage(detailHtml, item.url);
-
-        // Extract title from detail page if missing
-        let title = item.title;
-        if (!title) {
-            const ogTitle = detailHtml.match(/<meta[^>]+property="og:title"[^>]+content="([^"]+)"/i)
-                || detailHtml.match(/<title>([^<]+)<\/title>/i);
-            title = ogTitle ? ogTitle[1].replace(/\s*[-|]\s*핫딜집.*$/i, '').trim() : '제목 없음';
-        }
-
-        const imageUrl = thumbnail || item.thumbnail;
-
-        // Quick dedup check against in-memory set
-        if (existingLinks.has(externalLink)) {
-            console.log(`[Scraper] Skipped (duplicate): ${externalLink}`);
+        // Quick dedup check
+        if (existingLinks.has(feedExternalLink) || existingLinks.has(detailUrl)) {
+            console.log(`[Scraper] Skip (dup): ${item.title}`);
             skippedCount++;
             continue;
         }
 
-        // Double-check DB to handle race conditions
+        // DB dedup check to handle race conditions
         const { data: dup } = await supabase
             .from('posts')
             .select('id')
-            .or(`external_link.eq.${externalLink},external_link.eq.${item.url}`)
+            .or(`external_link.eq.${feedExternalLink},external_link.eq.${detailUrl}`)
             .maybeSingle();
 
         if (dup) {
             skippedCount++;
-            existingLinks.add(externalLink);
+            existingLinks.add(feedExternalLink);
+            continue;
+        }
+
+        // Human delay between requests
+        await randomDelay();
+
+        let externalLink = feedExternalLink;
+        let description = '';
+
+        // Fetch detail page to get dedicated buy-button link
+        try {
+            console.log(`[Scraper] Fetching detail: ${detailUrl}`);
+            const detailRes = await fetchWithTimeout(detailUrl, { headers: HUMAN_HEADERS });
+            console.log(`[Scraper] Detail status: ${detailRes.status}`);
+
+            if (detailRes.ok) {
+                const html = await detailRes.text();
+                const buyLink = extractBuyLink(html, feedExternalLink);
+                if (buyLink !== feedExternalLink) {
+                    console.log(`[Scraper] Found buy link: ${buyLink}`);
+                    externalLink = buyLink;
+                }
+                description = extractDescription(html);
+            }
+        } catch (e) {
+            console.warn(`[Scraper] Detail fetch error: ${e.message} — using feed link`);
+        }
+
+        // Thumbnail: feed already provides thumbnail_url
+        const imageUrl = item.thumbnail_url || null;
+        const title = item.title || '제목 없음';
+        const price = item.price || '';
+
+        // Final dedup on actual external link
+        if (existingLinks.has(externalLink)) {
+            skippedCount++;
             continue;
         }
 
@@ -278,11 +200,12 @@ async function runScraper(env) {
         const { error: insertError } = await supabase.from('posts').insert([{
             title,
             description,
-            content_html: contentHtml || '',
+            content_html: '',
             image_url: imageUrl,
             external_link: externalLink,
-            source_url: item.url,
+            source_url: detailUrl,
             category: hotdealCategoryId,
+            price,
             approved: true,
             is_hot: false,
             views: 0,
@@ -290,11 +213,11 @@ async function runScraper(env) {
         }]);
 
         if (insertError) {
-            console.error(`[Scraper] Insert error for "${title}":`, insertError.message);
+            console.error(`[Scraper] Insert error for "${title}": ${insertError.message}`);
         } else {
             addedCount++;
             existingLinks.add(externalLink);
-            console.log(`[Scraper] Added: ${title}`);
+            console.log(`[Scraper] Added [${addedCount}]: ${title}`);
         }
     }
 
@@ -302,12 +225,11 @@ async function runScraper(env) {
     return { added: addedCount, skipped: skippedCount };
 }
 
-// ─── HTTP Handler (manual trigger) ───────────────────────────
+// ─── HTTP Handler ─────────────────────────────────────────────
 
 export async function onRequest(context) {
     const { request, env } = context;
 
-    // CORS preflight
     if (request.method === 'OPTIONS') {
         return new Response(null, {
             headers: {
@@ -321,16 +243,9 @@ export async function onRequest(context) {
     const url = new URL(request.url);
     const secret = url.searchParams.get('secret');
 
-    if (!secret || secret !== env.CRON_SECRET) {
+    if (!secret || secret !== (env.CRON_SECRET || '').trim()) {
         return new Response(JSON.stringify({ success: false, error: 'Unauthorized' }), {
             status: 401,
-            headers: { 'Content-Type': 'application/json' },
-        });
-    }
-
-    if (!env.SUPABASE_URL || !env.SUPABASE_ANON_KEY) {
-        return new Response(JSON.stringify({ success: false, error: 'Missing Supabase env vars' }), {
-            status: 500,
             headers: { 'Content-Type': 'application/json' },
         });
     }
@@ -341,7 +256,7 @@ export async function onRequest(context) {
             headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
         });
     } catch (err) {
-        console.error('[Scraper] Fatal error:', err);
+        console.error('[Scraper] Fatal error:', err.message);
         return new Response(JSON.stringify({ success: false, error: err.message }), {
             status: 500,
             headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
