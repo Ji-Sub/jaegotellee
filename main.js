@@ -826,7 +826,16 @@ async function renderDetail() {
       : `<p style="font-size:13px;color:var(--text-sub);margin-bottom:16px;">
                댓글을 남기려면 <a href="javascript:void(0)" onclick="showLoginModal();return false;" style="color:var(--primary);font-weight:600;">로그인</a>이 필요합니다.
              </p>`}
-    </div>`;
+        <div id="comment-list">
+          ${comments.length === 0
+      ? `<p style="color:var(--text-sub);font-size:13px;">아직 댓글이 없습니다.</p>`
+      : comments.map(c => `
+              <div class="comment-item">
+                <div class="comment-author">${esc(c.users?.email?.split('@')[0] || '익명')}<span class="comment-time">${formatDate(c.created_at)}</span></div>
+                <div class="comment-content">${esc(c.content)}</div>
+              </div>`).join('')}
+        </div>
+      </div>`;
 
   console.log("--- 댓글 동기화 디버깅 시작 ---");
   console.log("1. 불러온 comments 배열 길이:", comments.length);
@@ -858,18 +867,18 @@ async function submitComment(postId) {
         <div class="comment-content">${esc(txt)}</div>
       </div>`;
 
-    if (commentList.innerHTML.includes('아직 댓글이 없습니다')) {
-      commentList.innerHTML = newCommentHtml;
-    } else {
-      commentList.insertAdjacentHTML('beforeend', newCommentHtml);
+    if (commentList) {
+      if (commentList.innerHTML.includes('아직 댓글이 없습니다')) {
+        commentList.innerHTML = newCommentHtml;
+      } else {
+        commentList.insertAdjacentHTML('beforeend', newCommentHtml);
+      }
     }
 
     // UI 상태 업데이트 (로컬에서 즉시 댓글 숫자 +1 반영)
     const countEl = document.getElementById('detail-comment-count');
     const titleEl = document.querySelector('.comments-title');
-
-    let currentCount = parseInt(countEl?.textContent || '0', 10) + 1;
-
+    const currentCount = parseInt(countEl?.textContent || '0', 10) + 1;
     if (countEl) countEl.textContent = currentCount;
     if (titleEl) titleEl.textContent = `댓글 ${currentCount}개`;
 
