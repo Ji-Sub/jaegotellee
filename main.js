@@ -481,7 +481,7 @@ function selectCat(id) {
   render();
 }
 
-// pagination functions removed. S.page resets in renderFeed.
+// Feed pagination UI replaced by a "Load more" button. S.page resets in renderFeed.
 
 window.loadMore = async function() {
   const btn = document.getElementById('btn-load-more');
@@ -500,7 +500,7 @@ window.loadMore = async function() {
       const listHtml = deals.map(d => {
         const detailParam = d.seo_url || d.post_url;
         return `
-          <a href="javascript:void(0)" onclick="navigateTo('hotdeal_detail', '${encodeURIComponent(detailParam)}')" class="hotdeal-list-item">
+          <a href="javascript:void(0)" data-navigate="hotdeal_detail" data-param="${encodeURIComponent(detailParam)}" class="hotdeal-list-item">
             <img src="${esc(d.thumbnail_url)}" alt="${esc(d.title)}" class="hotdeal-thumb" loading="lazy">
             <div class="hotdeal-info">
               <div class="hotdeal-badge" style="background: ${esc(d.gradient)}">${esc(d.community_name)}</div>
@@ -529,7 +529,7 @@ window.loadMore = async function() {
           const author = p.users?.email ? p.users.email.split('@')[0] : '익명';
           const date = new Date(p.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/ /g, '').slice(0, -1);
           html += `
-            <tr class="inquiry-row" onclick="navigateTo('detail', '${p.id}')">
+            <tr class="inquiry-row" data-navigate="detail" data-param="${p.id}">
               <td class="col-num">${num}</td>
               <td class="col-title"><div class="inquiry-title-text">${esc(p.title)}</div></td>
               <td class="col-author">${esc(author)}</td>
@@ -560,11 +560,13 @@ window.loadMore = async function() {
   }
 };
 
-function renderPagination() {
+function renderLoadMoreButton() {
   if (S.totalPages <= 1 || S.page >= S.totalPages) return '';
   return `
-    <div id="load-more-container" style="text-align: center; margin: 30px 0;">
-      <button id="btn-load-more" class="btn btn-outline" style="width: 100%; max-width: 400px; padding: 14px; border-radius: 12px; font-weight: bold;" onclick="loadMore()">더보기 <span style="font-size:12px;opacity:0.8;">(다음 20개)</span></button>
+    <div id="load-more-container" class="load-more-container">
+      <button id="btn-load-more" class="btn btn-outline load-more-btn" data-action="loadMore">
+        더보기 <span class="load-more-sub">(다음 20개)</span>
+      </button>
     </div>
   `;
 }
@@ -678,7 +680,7 @@ async function renderHotdealDetail() {
 
     el.innerHTML = `
       <div class="post-detail">
-        <a class="btn btn-ghost btn-sm detail-back" onclick="history.back();return false;" href="javascript:void(0)">← 목록으로</a>
+        <a class="btn btn-ghost btn-sm detail-back" data-action="historyBack" href="javascript:void(0)">← 목록으로</a>
         <div class="detail-cat">${esc(mall || '')}</div>
         <h1 class="detail-title">${esc(title)}</h1>
         <div class="detail-price">${esc(formatPrice(price))} ${shipping ? `<span style="font-size:14px;color:var(--text-muted);font-weight:normal;">/ 배송비: ${esc(shipping)}</span>` : ''}</div>
@@ -687,8 +689,8 @@ async function renderHotdealDetail() {
             ${contentHtml}
           </div>
         </div>
-        <div style="margin-top:20px;">
-          ${externalLinks.length > 0 ? `<a href="${esc(externalLinks[0])}" target="_blank" rel="noopener" class="purchase-btn" style="width:100%;justify-content:center;">🛒 쇼핑몰 바로가기</a>` : ''}
+        <div style="margin-top:30px; margin-bottom: 20px;">
+          ${externalLinks.length > 0 ? `<a href="${esc(externalLinks[0])}" target="_blank" rel="noopener noreferrer" class="purchase-btn">🔗 원본 링크 보러가기</a>` : ''}
         </div>
       </div>
     `;
@@ -701,66 +703,88 @@ async function renderHotdealDetail() {
 // FEED
 // ─────────────────────────────────────────────
 async function renderFeed() {
+  console.log(`[renderFeed] Start - category: ${S.category}`);
   S.page = 1;
   const el = document.getElementById('content');
+  el.innerHTML = ''; // 기존 컨테이너 완벽하게 비우기
   el.innerHTML = `<div class="loading"><div class="spinner"></div> 불러오는 중...</div>`;
 
-  if (S.category === 'hotdeal') {
-    const deals = await fetchHotDeals();
-    if (!deals || deals.length === 0) {
-      el.innerHTML = `<div class="empty-state"><div class="empty-emoji">📭</div><h3>핫딜이 없습니다</h3><p>현재 불러올 수 있는 핫딜이 없습니다.</p></div>`;
+  try {
+    if (S.category === 'hotdeal') {
+      console.log(`[renderFeed] Fetching hotdeals...`);
+      const deals = await fetchHotDeals();
+      console.log(`[renderFeed] Fetched ${deals?.length || 0} hotdeals`);
+      
+      if (!deals || deals.length === 0) {
+        el.innerHTML = `<div class="empty-state"><div class="empty-emoji">📭</div><h3>핫딜이 없습니다</h3><p>현재 불러올 수 있는 핫딜이 없습니다.</p></div>`;
+        return;
+      }
+
+      const listHtml = deals.map(d => {
+        // Use seo_url slug if available, otherwise fallback to post_url
+        const detailParam = d.seo_url || d.post_url;
+        return `
+          <a href="javascript:void(0)" data-navigate="hotdeal_detail" data-param="${encodeURIComponent(detailParam)}" class="hotdeal-list-item">
+            <img src="${esc(d.thumbnail_url)}" alt="${esc(d.title)}" class="hotdeal-thumb" loading="lazy">
+            <div class="hotdeal-info">
+              <div class="hotdeal-badge" style="background: ${esc(d.gradient)}">${esc(d.community_name)}</div>
+              <h3 class="hotdeal-title">${esc(d.title)}</h3>
+              <div class="hotdeal-meta">
+                <span class="hotdeal-price">${esc(formatPrice(d.price))}</span>
+                <span class="hotdeal-site">${esc(d.site)}</span>
+                <span class="hotdeal-time">${esc(d.time)}</span>
+              </div>
+            </div>
+          </a>
+        `;
+      }).join('');
+
+      el.innerHTML = `
+        <div class="feed-header">
+          <h2 class="feed-title">🔥 핫딜 모음</h2>
+        </div>
+        <div class="hotdeal-list-container">
+          ${listHtml}
+        </div>
+        ${renderLoadMoreButton()}
+      `;
       return;
     }
 
-    const listHtml = deals.map(d => {
-      // Use seo_url slug if available, otherwise fallback to post_url
-      const detailParam = d.seo_url || d.post_url;
-      return `
-        <a href="javascript:void(0)" onclick="navigateTo('hotdeal_detail', '${encodeURIComponent(detailParam)}')" class="hotdeal-list-item">
-          <img src="${esc(d.thumbnail_url)}" alt="${esc(d.title)}" class="hotdeal-thumb" loading="lazy">
-          <div class="hotdeal-info">
-            <div class="hotdeal-badge" style="background: ${esc(d.gradient)}">${esc(d.community_name)}</div>
-            <h3 class="hotdeal-title">${esc(d.title)}</h3>
-            <div class="hotdeal-meta">
-              <span class="hotdeal-price">${esc(formatPrice(d.price))}</span>
-              <span class="hotdeal-site">${esc(d.site)}</span>
-              <span class="hotdeal-time">${esc(d.time)}</span>
-            </div>
-          </div>
-        </a>
-      `;
-    }).join('');
+    console.log(`[renderFeed] Fetching posts for category: ${S.category}`);
+    const posts = await fetchPosts(S.category);
+    console.log(`[renderFeed] Fetched ${posts?.length || 0} posts`);
+    
+    const catLabel = getCatLabel(S.category);
+    const isServerCat = S.category === 'inquiry';
+    const canPost = isServerCat ? !!S.user : (S.role === 'seller' || S.role === 'admin');
+    const createPath = isServerCat ? 'create_inquiry' : 'create';
+
+    const cardsHtml = posts.length === 0
+      ? `<div class="empty-state"><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3><p>${isServerCat ? '질문이나 건의사항을 남겨주세요.' : '곧 새로운 딜이 업로드됩니다.'}</p></div>`
+      : (isServerCat ? renderInquiryListHtml(posts) : `<div class="cards-grid">${posts.map(p => cardHtml(p)).join('')}</div>`);
 
     el.innerHTML = `
       <div class="feed-header">
-        <h2 class="feed-title">🔥 핫딜 모음</h2>
+        <h2 class="feed-title">${esc(catLabel)}</h2>
+        ${canPost ? `<button class="btn btn-primary btn-sm" onclick="navigateTo('${createPath}')">+ 글쓰기</button>` : ''}
       </div>
-      <div class="hotdeal-list-container">
-        ${listHtml}
-      </div>
-      ${renderPagination()}
-    `;
-    return;
+      ${S.isDemo ? `<div class="demo-banner">🔧 <strong>데모 모드</strong> — main.js 상단의 Supabase 키를 입력하면 실제 데이터가 연동됩니다.</div>` : ''}
+      ${cardsHtml}
+      ${renderLoadMoreButton()}`;
+      
+    console.log(`[renderFeed] Rendering complete`);
+  } catch (error) {
+    console.error(`[renderFeed] Error:`, error);
+    el.innerHTML = `<div class="empty-state"><div class="empty-emoji">❌</div><h3>데이터를 불러오는 중 오류가 발생했습니다</h3><p>${error.message}</p></div>`;
+  } finally {
+    // 로딩 스피너 강제 제거 (innerHTML로 덮어씌워졌어도 방어적 차원에서)
+    const spinner = el.querySelector('.loading');
+    if (spinner) {
+      console.log(`[renderFeed] Removing loading spinner in finally block`);
+      spinner.remove();
+    }
   }
-
-  const posts = await fetchPosts(S.category);
-  const catLabel = getCatLabel(S.category);
-  const isServerCat = S.category === 'inquiry';
-  const canPost = isServerCat ? !!S.user : (S.role === 'seller' || S.role === 'admin');
-  const createPath = isServerCat ? 'create_inquiry' : 'create';
-
-  const cardsHtml = posts.length === 0
-    ? `<div class="empty-state"><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3><p>${isServerCat ? '질문이나 건의사항을 남겨주세요.' : '곧 새로운 딜이 업로드됩니다.'}</p></div>`
-    : (isServerCat ? renderInquiryListHtml(posts) : `<div class="cards-grid">${posts.map(p => cardHtml(p)).join('')}</div>`);
-
-  el.innerHTML = `
-    <div class="feed-header">
-      <h2 class="feed-title">${esc(catLabel)}</h2>
-      ${canPost ? `<button class="btn btn-primary btn-sm" onclick="navigateTo('${createPath}')">+ 글쓰기</button>` : ''}
-    </div>
-    ${S.isDemo ? `<div class="demo-banner">🔧 <strong>데모 모드</strong> — main.js 상단의 Supabase 키를 입력하면 실제 데이터가 연동됩니다.</div>` : ''}
-    ${cardsHtml}
-    ${renderPagination()}`;
 }
 
 function renderInquiryListHtml(posts) {
@@ -789,7 +813,7 @@ function renderInquiryListHtml(posts) {
     const date = new Date(p.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/ /g, '').slice(0, -1);
 
     html += `
-      <tr class="inquiry-row" onclick="navigateTo('detail', '${p.id}')">
+      <tr class="inquiry-row" data-navigate="detail" data-param="${p.id}">
         <td class="col-num">${num}</td>
         <td class="col-title"><div class="inquiry-title-text">${esc(p.title)}</div></td>
         <td class="col-author">${esc(author)}</td>
@@ -812,7 +836,7 @@ function cardHtml(p) {
     ? `<img src="${esc(p.image_url)}" alt="${esc(p.title)}" class="card-img" loading="lazy">`
     : `<div class="card-placeholder">${getCatEmoji(p.category)}</div>`;
   return `
-    <div class="post-card" onclick="navigateTo('detail','${p.id}')">
+    <div class="post-card" data-navigate="detail" data-param="${p.id}">
       <div class="card-img-wrap">
         ${img}
         ${(p.like_count >= 10) ? `<span class="hot-badge">🔥 인기 히든딜</span>` : ''}
@@ -823,7 +847,7 @@ function cardHtml(p) {
         <div class="card-desc">${esc(p.description)}</div>
         <div class="card-price">${esc(formatPrice(p.price))}</div>
         <div class="card-meta">
-          <button class="upvote-btn" data-upvote-target="${p.id}" onclick="event.stopPropagation(); toggleUpvote('${p.id}');">
+          <button class="upvote-btn" data-upvote-target="${p.id}" data-action="toggleUpvote" data-param="${p.id}">
             <span class="upvote-icon">👍</span> <span class="upvote-count">${p.like_count || 0}</span>
           </button>
           <span>💬 ${p.comment_count || 0}</span>
@@ -857,13 +881,13 @@ async function renderDetail() {
 
   el.innerHTML = `
     <div class="post-detail">
-      <a class="btn btn-ghost btn-sm detail-back" onclick="history.back();return false;" href="javascript:void(0)">← 목록으로</a>
+      <a class="btn btn-ghost btn-sm detail-back" data-action="historyBack" href="javascript:void(0)">← 목록으로</a>
       <div class="detail-cat">${esc(getCatLabel(post.category))}</div>
       <h1 class="detail-title">${esc(post.title)}</h1>
       <div class="detail-price">${esc(formatPrice(post.price))}</div>
       <div class="detail-meta">
         ${post.category !== 'inquiry' ? `
-        <button class="upvote-btn detail-upvote" data-upvote-target="${post.id}" onclick="toggleUpvote('${post.id}')">
+        <button class="upvote-btn detail-upvote" data-upvote-target="${post.id}" data-action="toggleUpvote" data-param="${post.id}">
           <span class="upvote-icon">👍</span> <span class="upvote-count">${post.like_count || 0}</span>
         </button>
         ` : ''}
@@ -873,38 +897,26 @@ async function renderDetail() {
 
       ${post.purchase_link ? `
       <div class="curation-banner" style="
-        background: linear-gradient(135deg, var(--card-bg, #1e1e2e) 0%, rgba(99,102,241,0.12) 100%);
-        border: 1px solid rgba(99,102,241,0.3);
+        background: linear-gradient(135deg, var(--card-bg, #1e1e2e) 0%, rgba(99,102,241,0.08) 100%);
+        border: 1px solid rgba(99,102,241,0.2);
         border-radius: 16px;
-        padding: 28px 24px;
+        padding: 32px 24px;
         text-align: center;
-        margin: 20px 0;
+        margin: 30px 0;
       ">
-        <div style="font-size: 2.4rem; margin-bottom: 10px;">🔗</div>
-        <p style="color: var(--text-sub, #aaa); font-size: 14px; margin: 0 0 20px 0; line-height: 1.6;">
-          해당 핫딜의 상세 내용과 이미지는<br>원본 커뮤니티에서 확인할 수 있습니다.
+        <div style="font-size: 2.8rem; margin-bottom: 12px; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));">🛍️</div>
+        <p style="color: var(--text-sub, #aaa); font-size: 15px; margin: 0 0 24px 0; line-height: 1.6;">
+          해당 상품의 상세 내용과 전체 정보는<br>원본 판매 페이지에서 직접 확인하실 수 있습니다.
         </p>
         <a
           href="${esc(post.purchase_link)}"
           target="_blank"
           rel="noopener noreferrer"
-          style="
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-            color: #fff;
-            font-weight: 700;
-            font-size: 16px;
-            padding: 14px 32px;
-            border-radius: 12px;
-            text-decoration: none;
-            box-shadow: 0 4px 20px rgba(99,102,241,0.4);
-            transition: transform 0.15s, box-shadow 0.15s;
-          "
-          onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 28px rgba(99,102,241,0.5)'"
-          onmouseout="this.style.transform='';this.style.boxShadow='0 4px 20px rgba(99,102,241,0.4)'"
-        >📄 원본 게시글 보러가기 ↗</a>
+          class="purchase-btn"
+          style="display: inline-flex; width: auto; min-width: 200px; margin: 0 auto;"
+        >
+          원본 링크 보러가기
+        </a>
       </div>
       ` : `<div class="detail-desc">${esc(post.description || '')}</div>`}
 
@@ -1225,7 +1237,39 @@ window.addAdminCategory = async function (e) {
 
 // Global Event Delegation for Dynamic Elements
 document.addEventListener('click', async function (e) {
-  const addCatBtn = e.target.closest('#btn-add-admin-category');
+  const target = e.target;
+  
+  // 1. Actions (buttons, toggles)
+  const actionEl = target.closest('[data-action]');
+  if (actionEl) {
+    e.preventDefault();
+    e.stopPropagation();
+    const action = actionEl.getAttribute('data-action');
+    const param = actionEl.getAttribute('data-param');
+    const param2 = actionEl.getAttribute('data-param2');
+    
+    if (action === 'toggleUpvote') {
+      if (typeof window.toggleUpvote === 'function') window.toggleUpvote(param, param2);
+    } else if (action === 'loadMore') {
+      if (typeof window.loadMore === 'function') window.loadMore();
+    } else if (action === 'historyBack') {
+      history.back();
+    }
+    return;
+  }
+
+  // 2. Navigation
+  const navEl = target.closest('[data-navigate]');
+  if (navEl) {
+    e.preventDefault();
+    const view = navEl.getAttribute('data-navigate');
+    const param = navEl.getAttribute('data-param');
+    navigateTo(view, param);
+    return;
+  }
+
+  // 3. Existing admin categories
+  const addCatBtn = target.closest('#btn-add-admin-category');
   if (addCatBtn) {
     if (typeof window.addAdminCategory === 'function') {
       await window.addAdminCategory(e);
