@@ -593,7 +593,7 @@ async function fetchHotDeals() {
 
 async function fetchHotdealDetail(url) {
   try {
-    const res = await fetch(`/api/proxy?url=${encodeURIComponent(url)}`);
+    const res = await fetch(`/api/hotdeal?url=${encodeURIComponent(url)}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.text();
   } catch (e) {
@@ -609,106 +609,91 @@ async function renderHotdealDetail() {
   try {
     const rawParam = decodeURIComponent(S.postId);
     const targetUrl = rawParam.startsWith('http') ? rawParam : `https://hotdeal.zip/${rawParam}`;
-    const htmlText = await fetchHotdealDetail(targetUrl);
-    if (!htmlText) throw new Error('데이터를 불러오지 못했습니다.');
+    const res = await fetch(`/api/hotdeal?url=${encodeURIComponent(targetUrl)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const htmlText = await res.text();
+
+    let safeHtmlText = htmlText;
+    if (htmlText.includes('<product_name>') || htmlText.includes('class="board-contents"') || htmlText.includes("class='board-contents'")) {
+      safeHtmlText = htmlText.replace(/<td([^>]*)>/gi, '<div$1>').replace(/<\/td>/gi, '</div>');
+    }
 
     const parser = new DOMParser();
-    let doc;
-    let title = '제목 없음';
-    let price = '';
-    let mall = '';
+    const doc = parser.parseFromString(safeHtmlText, 'text/html');
+
+    const ogTitle = doc.querySelector('meta[property="og:title"]')?.content || '';
+    const ogImage = doc.querySelector('meta[property="og:image"]')?.content || '';
+    const ogDesc = doc.querySelector('meta[property="og:description"]')?.content || '';
+
+    let title = doc.querySelector('.deal-title')?.textContent?.trim() || doc.querySelector('product_name')?.textContent || ogTitle || '제목 없음';
+    let price = doc.querySelector('.price-value')?.textContent?.trim() || doc.querySelector('price')?.textContent || '';
+    let mall = doc.querySelector('.shop-name')?.innerText?.trim() || doc.querySelector('shopping_mall')?.textContent || '';
+
     let externalLinks = [];
+    const buyBtn = doc.querySelector('.buy-button') || doc.querySelector('a.purchase-btn') || doc.querySelector('a[href*="outlink"]');
+    if (buyBtn && buyBtn.getAttribute('href')) externalLinks.push(buyBtn.getAttribute('href'));
+    if (externalLinks.length === 0) {
+      const linkMatches = [...htmlText.matchAll(/<link>(.*?)<\/link>/g)];
+      externalLinks = linkMatches.map(m => m[1].trim());
+    }
+
+    const contentEl =
+      doc.querySelector('.board-contents') ||
+      doc.querySelector('article') ||
+      doc.querySelector('.deal-description') ||
+      doc.querySelector('.post-content') ||
+      doc.querySelector('.view-content') ||
+      doc.querySelector('content');
+
+    const originMatch = htmlText.match(/현재 URL:<\/strong>\s*(https?:\/\/[^\s<]+)/);
+    const originUrl = originMatch ? originMatch[1].replace(/&amp;/g, '&') : targetUrl;
     let contentHtml = '';
 
-    // 공통 이미지 절대경로 보정 함수
-    function fixImages(containerEl, originUrl) {
-      containerEl.querySelectorAll('img').forEach(img => {
-        const src = img.getAttribute('src');
+    if (contentEl) {
+      contentEl.querySelectorAll('img').forEach(img => {
+        // Lazy Loading 이미지 완벽 대응 (data-src, data-original 우선)
+        const src = img.getAttribute('data-src') || img.getAttribute('data-original') || img.getAttribute('src');
         if (src) {
           try { img.src = new URL(src, originUrl).href; }
-          catch (_) {
+          catch (e) {
             if (src.startsWith('//')) img.src = 'https:' + src;
-            else if (src.startsWith('/')) img.src = new URL(src, targetUrl).href;
+            else if (src.startsWith('/')) img.src = 'https://hotdeal.zip' + src;
           }
         }
         img.style.maxWidth = '100%';
         img.style.height = 'auto';
+        img.style.display = 'block';
+        img.style.margin = '10px auto';
       });
-      containerEl.querySelectorAll('script, style, iframe').forEach(s => s.remove());
+      contentEl.querySelectorAll('script, style, iframe').forEach(s => s.remove());
+      contentHtml = contentEl.innerHTML.trim();
     }
 
-    if (htmlText.includes('<product_name>') || htmlText.includes('<content>')) {
-      // ── XML(프록시) 구조 ──
-      const safeHtml = htmlText.replace(/<td([^>]*)>/gi, '<div$1>').replace(/<\/td>/gi, '</div>');
-      doc = parser.parseFromString(safeHtml, 'text/html');
-
-      title = doc.querySelector('product_name')?.textContent?.trim() || '제목 없음';
-      price = doc.querySelector('price')?.textContent?.trim() || '';
-      mall = doc.querySelector('shopping_mall')?.textContent?.trim() || '';
-
-      const linkMatches = [...safeHtml.matchAll(/<link>(.*?)<\/link>/g)];
-      externalLinks = linkMatches.map(m => m[1].trim());
-
-      const contentEl = doc.querySelector('content');
-      if (contentEl) {
-        const originMatch = safeHtml.match(/현재 URL:<\/strong>\s*(https?:\/\/[^\s<]+)/);
-        const originUrl = originMatch ? originMatch[1].replace(/&amp;/g, '&') : targetUrl;
-        fixImages(contentEl, originUrl);
-        contentHtml = contentEl.innerHTML;
-      }
-    } else {
-      // ── 일반 웹페이지 HTML 구조 ──
-      const safeHtml = htmlText.replace(/<td([^>]*)>/gi, '<div$1>').replace(/<\/td>/gi, '</div>');
-      doc = parser.parseFromString(safeHtml, 'text/html');
-
-      title = doc.querySelector('.deal-title')?.textContent?.trim() || '제목 없음';
-      price = doc.querySelector('.price-value')?.textContent?.trim() || '';
-      mall = doc.querySelector('.shop-name')?.innerText?.trim() || '';
-
-      const buyBtn = doc.querySelector('.buy-button');
-      if (buyBtn && buyBtn.getAttribute('href')) externalLinks.push(buyBtn.getAttribute('href'));
-
-      // 핫딜집 및 주요 커뮤니티 본문 셀렉터 (우선순위 순)
-      const contentEl =
-        doc.querySelector('.board-contents') ||   // 핫딜집 / 뽐뿌 / 클리앙
-        doc.querySelector('.deal-description') ||  // hotdeal.zip 상세
-        doc.querySelector('.post-content') ||      // FM코리아 등
-        doc.querySelector('.view-content') ||      // 루리웹 등
-        doc.querySelector('.article-body') ||
-        doc.querySelector('article') ||
-        doc.querySelector('.content-view');
-
-      if (contentEl) {
-        const originMatch = htmlText.match(/현재 URL:<\/strong>\s*(https?:\/\/[^\s<]+)/);
-        const originUrl = originMatch ? originMatch[1].replace(/&amp;/g, '&') : targetUrl;
-        fixImages(contentEl, originUrl);
-        contentHtml = contentEl.innerHTML;
-      }
+    // 본문이 비었을 때 OG 메타 태그로 Fallback
+    if (!contentHtml || contentHtml.length < 20) {
+      contentHtml = `
+        <div style="text-align:center;">
+          ${ogImage ? `<img src="${ogImage}" style="max-width:100%; height:auto; border-radius:8px; margin-bottom:20px;">` : ''}
+          <p style="font-size:16px; line-height:1.6; color:var(--text-main); text-align:left; word-break:keep-all;">
+            ${ogDesc ? ogDesc.replace(/\n/g, '<br>') : '상세 내용은 원본 링크에서 확인해주세요.'}
+          </p>
+        </div>
+      `;
     }
-
-    if (!contentHtml || contentHtml.trim() === '') {
-      contentHtml = '<p style="text-align:center; padding: 20px; color: var(--text-muted);">본문 내용을 불러올 수 없습니다.<br>원본 게시글에서 직접 확인해 주세요.</p>';
-    }
-
-    // 원본 링크: externalLinks 우선, 없으면 targetUrl fallback
-    const finalLink = externalLinks[0] || targetUrl;
 
     el.innerHTML = `
       <div class="post-detail">
         <a class="btn btn-ghost btn-sm detail-back" data-action="historyBack" href="javascript:void(0)">← 목록으로</a>
-        ${mall ? `<div class="detail-cat">${esc(mall)}</div>` : ''}
+        <div class="detail-cat">${esc(mall)}</div>
         <h1 class="detail-title">${esc(title)}</h1>
-        ${price ? `<div class="detail-price">${esc(formatPrice(price))}</div>` : ''}
-
-        <div class="detail-desc" style="margin-top: 24px; font-size: 15px; line-height: 1.7; word-break: break-word; overflow-wrap: break-word; overflow: hidden;">
-          ${contentHtml}
+        <div class="detail-price">${esc(formatPrice(price))}</div>
+        <div class="comments-section" style="padding-top:20px; border-bottom: 1px solid var(--border-color); margin-bottom: 30px; padding-bottom: 30px;">
+          <div class="detail-desc" style="white-space:normal; overflow:hidden; width:100%; max-width:100%;">
+            ${contentHtml}
+          </div>
         </div>
-
-        <div style="text-align: center; margin: 48px 0 32px 0; padding-top: 28px; border-top: 1px solid var(--border);">
-          <a href="${esc(finalLink)}" target="_blank" rel="noopener noreferrer" class="btn btn-primary"
-            style="display: inline-flex; align-items: center; gap: 8px; min-width: 240px; padding: 16px 28px; font-size: 16px; font-weight: bold; border-radius: 8px; background: #8b5cf6; border: none; cursor: pointer; justify-content: center;">
-            🔗 원본 게시글 보러가기 ↗
-          </a>
+        <div style="text-align: center; margin: 40px 0;">
+          ${externalLinks.length > 0 ? `<a href="${esc(externalLinks[0])}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="display: inline-flex; min-width: 200px; padding: 14px; font-size: 15px; font-weight: bold; border-radius: 8px; background: #8b5cf6; border: none; cursor:pointer;">🔗 원본 게시글 보러가기 ↗</a>` : '<p style="color: #ef4444;">원본 링크를 찾을 수 없습니다.</p>'}
         </div>
       </div>
     `;
