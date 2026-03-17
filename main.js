@@ -637,13 +637,18 @@ async function renderHotdealDetail() {
       externalLinks = linkMatches.map(m => m[1].trim());
     }
 
+    // ── 커뮤니티별 다중 본문 셀렉터 대응 로직 ───────────────────────────────
+    // 각 커뮤니티마다 본문 컨테이너 클래스명이 달라 단일 셀렉터로는 찾지 못합니다.
+    // 우선순위 순서로 탐색하여 첫 번째로 일치하는 컨테이너를 사용합니다.
     const contentEl =
-      doc.querySelector('.board-contents') ||
-      doc.querySelector('article') ||
-      doc.querySelector('.deal-description') ||
-      doc.querySelector('.post-content') ||
-      doc.querySelector('.view-content') ||
-      doc.querySelector('content');
+      doc.querySelector('.board-contents') ||   // 핫딜집 / 뽐뿌 / 클리앙
+      doc.querySelector('article') ||            // 시맨틱 태그 범용
+      doc.querySelector('.deal-description') ||  // hotdeal.zip 자체 상세
+      doc.querySelector('.post-content') ||      // FM코리아 등
+      doc.querySelector('.view-content') ||      // 루리웹 등
+      doc.querySelector('.post_content') ||      // 일부 XE 기반 커뮤니티
+      doc.querySelector('.content') ||           // 범용 content 클래스
+      doc.querySelector('content');              // XML(프록시) 구조
 
     const originMatch = htmlText.match(/현재 URL:<\/strong>\s*(https?:\/\/[^\s<]+)/);
     const originUrl = originMatch ? originMatch[1].replace(/&amp;/g, '&') : targetUrl;
@@ -652,10 +657,14 @@ async function renderHotdealDetail() {
     if (contentEl) {
       // 원본 사이트의 origin (scheme + host) — 상대경로 이미지 절대화에 사용
       const originBase = (() => { try { return new URL(originUrl).origin; } catch(_) { return 'https://hotdeal.zip'; } })();
+
+      // ── CORS 및 핫링크 방어를 위한 이미지 프록시 로직 ──────────────────────
+      // 퀘이사존/펨코 등은 다른 사이트에서 이미지를 불러오면 차단합니다(핫링크 방어).
+      // wsrv.nl은 무료 이미지 CDN 프록시로, 서버 측에서 이미지를 가져오므로
+      // 브라우저의 Referer 헤더나 CORS 정책이 전혀 개입하지 않아 차단을 무력화합니다.
       contentEl.querySelectorAll('img').forEach(img => {
-        // ── Lazy Loading 이미지 속성 대폭 확장 탐색 (5단계 폴백) ──────────────
+        // Lazy Loading 이미지 속성 탐색 (5단계 폴백)
         // 커뮤니티마다 실제 이미지 URL을 다른 속성에 숨깁니다.
-        // data-src > data-original > data-lazy-src > lazy-src > src 순서로 탐색합니다.
         const src =
           img.getAttribute('data-src') ||
           img.getAttribute('data-original') ||
@@ -664,17 +673,18 @@ async function renderHotdealDetail() {
           img.getAttribute('src');
 
         if (src) {
-          // 1단계: 상대경로를 절대경로로 변환
+          // 1단계: 상대경로 → 절대경로 변환
           let finalUrl = src;
           try { finalUrl = new URL(src, originBase).href; }
           catch (_) {
             if (src.startsWith('//')) finalUrl = 'https:' + src;
             else if (src.startsWith('/')) finalUrl = originBase + src;
           }
-          // 2단계: wsrv.nl 이미지 프록시로 래핑 — 퀘이사존/펨코 등 철저한
-          // 핫링크 방어(Hotlink Protection)와 CORS 차단을 서버 측에서 완전 우회합니다.
+          // 2단계: wsrv.nl 이미지 프록시로 래핑 (핫링크/CORS 완전 우회)
           img.src = 'https://wsrv.nl/?url=' + encodeURIComponent(finalUrl);
         }
+        img.setAttribute('referrerpolicy', 'no-referrer'); // 핫링크 방어 2중 우회
+        img.setAttribute('loading', 'lazy');               // 스크롤 시 지연 로드
         img.style.maxWidth = '100%';
         img.style.height = 'auto';
         img.style.display = 'block';
@@ -684,11 +694,11 @@ async function renderHotdealDetail() {
       contentHtml = contentEl.innerHTML.trim();
     }
 
-    // 본문이 비었을 때 OG 메타 태그로 Fallback
+    // 본문이 비었을 때 OG 메타 태그로 Fallback — 절대 빈 화면을 보이지 않습니다
     if (!contentHtml || contentHtml.length < 20) {
       contentHtml = `
         <div style="text-align:center;">
-          ${ogImage ? `<img src="${ogImage}" style="max-width:100%; height:auto; border-radius:8px; margin-bottom:20px;">` : ''}
+          ${ogImage ? `<img src="https://wsrv.nl/?url=${encodeURIComponent(ogImage)}" referrerpolicy="no-referrer" loading="lazy" style="max-width:100%; height:auto; border-radius:8px; margin-bottom:20px;">` : ''}
           <p style="font-size:16px; line-height:1.6; color:var(--text-main); text-align:left; word-break:keep-all;">
             ${ogDesc ? ogDesc.replace(/\n/g, '<br>') : '상세 내용은 원본 링크에서 확인해주세요.'}
           </p>
@@ -911,14 +921,17 @@ async function renderDetail() {
         const ogImage = doc.querySelector('meta[property="og:image"]')?.content || '';
         const ogDesc = doc.querySelector('meta[property="og:description"]')?.content || '';
 
-        // ── 본문 컨테이너 탐색 (커뮤니티별 다중 Fallback 셀렉터) ─────────────
-        // 각 커뮤니티마다 본문 컨테이너 클래스명이 다르므로, 우선순위 순으로 탐색합니다.
+        // ── 커뮤니티별 다중 본문 셀렉터 대응 로직 ─────────────────────────────
+        // 각 커뮤니티마다 본문 컨테이너 클래스명이 달라 단일 셀렉터로는 찾지 못합니다.
+        // 우선순위 순서로 탐색하여 첫 번째로 일치하는 컨테이너를 사용합니다.
         const contentEl =
           doc.querySelector('.board-contents') ||   // 핫딜집 / 뽐뿌 / 클리앙
           doc.querySelector('.deal-description') ||  // hotdeal.zip 자체 상세 페이지
           doc.querySelector('.post-content') ||      // FM코리아 등
           doc.querySelector('.view-content') ||      // 루리웹 등
           doc.querySelector('.article-body') ||      // 기타 블로그형
+          doc.querySelector('.post_content') ||      // 일부 XE 기반 커뮤니티
+          doc.querySelector('.content') ||           // 범용 content 클래스
           doc.querySelector('article') ||            // 시맨틱 태그 범용
           doc.querySelector('content');              // XML(프록시) 구조
 
@@ -934,10 +947,12 @@ async function renderDetail() {
           // origin만 추출 (scheme + host) — 상대경로 절대화에 사용
           const originBase = (() => { try { return new URL(originUrl).origin; } catch(_) { return new URL(post.purchase_link).origin; } })();
 
+          // ── CORS 및 핫링크 방어를 위한 이미지 프록시 로직 ──────────────────
+          // 퀘이사존/펨코 등은 다른 사이트에서 이미지를 불러오면 차단합니다(핫링크 방어).
+          // wsrv.nl은 무료 이미지 CDN 프록시로, 서버 측에서 이미지를 가져오므로
+          // 브라우저의 Referer 헤더나 CORS 정책이 전혀 개입하지 않아 차단을 무력화합니다.
           contentEl.querySelectorAll('img').forEach(img => {
-            // ── Lazy Loading 이미지 속성 대폭 확장 탐색 (5단계 폴백) ────────────
-            // 커뮤니티마다 실제 이미지 URL을 다른 속성에 숨깁니다.
-            // data-src > data-original > data-lazy-src > lazy-src > src 순서로 탐색합니다.
+            // Lazy Loading 이미지 속성 탐색 (5단계 폴백)
             const src =
               img.getAttribute('data-src') ||
               img.getAttribute('data-original') ||
@@ -946,17 +961,18 @@ async function renderDetail() {
               img.getAttribute('src');
 
             if (src) {
-              // 1단계: 상대경로를 절대경로로 변환 (origin 기준으로 확실하게 보정)
+              // 1단계: 상대경로 → 절대경로 변환 (origin 기준으로 확실하게 보정)
               let finalUrl = src;
               try { finalUrl = new URL(src, originBase).href; }
               catch (_) {
                 if (src.startsWith('//')) finalUrl = 'https:' + src;
                 else if (src.startsWith('/')) finalUrl = originBase + src;
               }
-              // 2단계: wsrv.nl 이미지 프록시로 래핑 — 퀘이사존/펨코 등 철저한
-              // 핫링크 방어(Hotlink Protection)와 CORS 차단을 서버 측에서 완전 우회합니다.
+              // 2단계: wsrv.nl 이미지 프록시로 래핑 (핫링크/CORS 완전 우회)
               img.src = 'https://wsrv.nl/?url=' + encodeURIComponent(finalUrl);
             }
+            img.setAttribute('referrerpolicy', 'no-referrer'); // 핫링크 방어 2중 우회
+            img.setAttribute('loading', 'lazy');               // 스크롤 시 지연 로드
             // 모바일에서 이미지가 화면 밖으로 삐져나가지 않도록 강제 제한
             img.style.maxWidth = '100%';
             img.style.height = 'auto';
