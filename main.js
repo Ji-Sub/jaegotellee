@@ -593,10 +593,11 @@ async function fetchHotDeals() {
 
 async function fetchHotdealDetail(url) {
   try {
-    const res = await fetch(`/api/hotdeal?url=${encodeURIComponent(url)}`);
+    const res = await fetch(`/api/proxy?url=${encodeURIComponent(url)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
     return await res.text();
   } catch (e) {
-    console.error(e);
+    console.error('[fetchHotdealDetail]', e);
     return null;
   }
 }
@@ -619,9 +620,25 @@ async function renderHotdealDetail() {
     let externalLinks = [];
     let contentHtml = '';
 
-    // 1. 프록시 서버(XML) 구조인지, 원본 HTML인지 체크
+    // 공통 이미지 절대경로 보정 함수
+    function fixImages(containerEl, originUrl) {
+      containerEl.querySelectorAll('img').forEach(img => {
+        const src = img.getAttribute('src');
+        if (src) {
+          try { img.src = new URL(src, originUrl).href; }
+          catch (_) {
+            if (src.startsWith('//')) img.src = 'https:' + src;
+            else if (src.startsWith('/')) img.src = new URL(src, targetUrl).href;
+          }
+        }
+        img.style.maxWidth = '100%';
+        img.style.height = 'auto';
+      });
+      containerEl.querySelectorAll('script, style, iframe').forEach(s => s.remove());
+    }
+
     if (htmlText.includes('<product_name>') || htmlText.includes('<content>')) {
-      // <td> 태그 날아가는 현상 방지용 치환
+      // ── XML(프록시) 구조 ──
       const safeHtml = htmlText.replace(/<td([^>]*)>/gi, '<div$1>').replace(/<\/td>/gi, '</div>');
       doc = parser.parseFromString(safeHtml, 'text/html');
 
@@ -632,28 +649,18 @@ async function renderHotdealDetail() {
       const linkMatches = [...safeHtml.matchAll(/<link>(.*?)<\/link>/g)];
       externalLinks = linkMatches.map(m => m[1].trim());
 
-      let contentEl = doc.querySelector('content');
+      const contentEl = doc.querySelector('content');
       if (contentEl) {
-        // 이미지 절대 경로 보정
         const originMatch = safeHtml.match(/현재 URL:<\/strong>\s*(https?:\/\/[^\s<]+)/);
         const originUrl = originMatch ? originMatch[1].replace(/&amp;/g, '&') : targetUrl;
-        contentEl.querySelectorAll('img').forEach(img => {
-          const src = img.getAttribute('src');
-          if (src) {
-            try { img.src = new URL(src, originUrl).href; }
-            catch (e) {
-              if (src.startsWith('//')) img.src = 'https:' + src;
-            }
-          }
-          // 모바일 화면 밖으로 안 삐져나가게 방어
-          img.style.maxWidth = '100%';
-          img.style.height = 'auto';
-        });
+        fixImages(contentEl, originUrl);
         contentHtml = contentEl.innerHTML;
       }
     } else {
-      // 일반 웹페이지 HTML인 경우
-      doc = parser.parseFromString(htmlText, 'text/html');
+      // ── 일반 웹페이지 HTML 구조 ──
+      const safeHtml = htmlText.replace(/<td([^>]*)>/gi, '<div$1>').replace(/<\/td>/gi, '</div>');
+      doc = parser.parseFromString(safeHtml, 'text/html');
+
       title = doc.querySelector('.deal-title')?.textContent?.trim() || '제목 없음';
       price = doc.querySelector('.price-value')?.textContent?.trim() || '';
       mall = doc.querySelector('.shop-name')?.innerText?.trim() || '';
@@ -661,36 +668,47 @@ async function renderHotdealDetail() {
       const buyBtn = doc.querySelector('.buy-button');
       if (buyBtn && buyBtn.getAttribute('href')) externalLinks.push(buyBtn.getAttribute('href'));
 
-      let contentEl = doc.querySelector('article') || doc.querySelector('.deal-description');
+      // 핫딜집 및 주요 커뮤니티 본문 셀렉터 (우선순위 순)
+      const contentEl =
+        doc.querySelector('.board-contents') ||   // 핫딜집 / 뽐뿌 / 클리앙
+        doc.querySelector('.deal-description') ||  // hotdeal.zip 상세
+        doc.querySelector('.post-content') ||      // FM코리아 등
+        doc.querySelector('.view-content') ||      // 루리웹 등
+        doc.querySelector('.article-body') ||
+        doc.querySelector('article') ||
+        doc.querySelector('.content-view');
+
       if (contentEl) {
-        contentEl.querySelectorAll('img').forEach(img => {
-          img.style.maxWidth = '100%';
-          img.style.height = 'auto';
-        });
+        const originMatch = htmlText.match(/현재 URL:<\/strong>\s*(https?:\/\/[^\s<]+)/);
+        const originUrl = originMatch ? originMatch[1].replace(/&amp;/g, '&') : targetUrl;
+        fixImages(contentEl, originUrl);
         contentHtml = contentEl.innerHTML;
       }
     }
 
     if (!contentHtml || contentHtml.trim() === '') {
-      contentHtml = '<p style="text-align:center; padding: 20px;">본문 내용을 불러올 수 없습니다.</p>';
+      contentHtml = '<p style="text-align:center; padding: 20px; color: var(--text-muted);">본문 내용을 불러올 수 없습니다.<br>원본 게시글에서 직접 확인해 주세요.</p>';
     }
 
-    // 화면 렌더링 (글+이미지 쫙 깔고, 맨 밑에 버튼)
+    // 원본 링크: externalLinks 우선, 없으면 targetUrl fallback
+    const finalLink = externalLinks[0] || targetUrl;
+
     el.innerHTML = `
       <div class="post-detail">
         <a class="btn btn-ghost btn-sm detail-back" data-action="historyBack" href="javascript:void(0)">← 목록으로</a>
-        <div class="detail-cat">${esc(mall)}</div>
+        ${mall ? `<div class="detail-cat">${esc(mall)}</div>` : ''}
         <h1 class="detail-title">${esc(title)}</h1>
-        <div class="detail-price">${esc(formatPrice(price))}</div>
-        
-        <div class="detail-body-content" style="margin-top: 30px; font-size: 15px; line-height: 1.6; word-break: break-word; overflow-wrap: break-word;">
+        ${price ? `<div class="detail-price">${esc(formatPrice(price))}</div>` : ''}
+
+        <div class="detail-desc" style="margin-top: 24px; font-size: 15px; line-height: 1.7; word-break: break-word; overflow-wrap: break-word; overflow: hidden;">
           ${contentHtml}
         </div>
-        
-        <div style="text-align: center; margin: 50px 0 30px 0; padding-top: 30px; border-top: 1px solid var(--border-color);">
-          ${externalLinks.length > 0
-        ? `<a href="${esc(externalLinks[0])}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="display: inline-flex; min-width: 240px; padding: 16px; font-size: 16px; font-weight: bold; border-radius: 8px; background: #8b5cf6; border: none; cursor:pointer;">🔗 원본 게시글 보러가기 ↗</a>`
-        : '<p style="color: #ef4444;">원본 링크를 찾을 수 없습니다.</p>'}
+
+        <div style="text-align: center; margin: 48px 0 32px 0; padding-top: 28px; border-top: 1px solid var(--border);">
+          <a href="${esc(finalLink)}" target="_blank" rel="noopener noreferrer" class="btn btn-primary"
+            style="display: inline-flex; align-items: center; gap: 8px; min-width: 240px; padding: 16px 28px; font-size: 16px; font-weight: bold; border-radius: 8px; background: #8b5cf6; border: none; cursor: pointer; justify-content: center;">
+            🔗 원본 게시글 보러가기 ↗
+          </a>
         </div>
       </div>
     `;
@@ -780,10 +798,8 @@ async function renderFeed() {
     console.error(`[renderFeed] Error:`, error);
     el.innerHTML = `<div class="empty-state"><div class="empty-emoji">❌</div><h3>데이터를 불러오는 중 오류가 발생했습니다</h3><p>${error.message}</p></div>`;
   } finally {
-    const spinner = el.querySelector('.loading');
-    if (spinner) {
-      spinner.remove();
-    }
+    const spinner = document.querySelector('.loading');
+    if (spinner) spinner.remove();
   }
 }
 
@@ -895,30 +911,20 @@ async function renderDetail() {
         <span>👁 조회 ${post.views || 0}회</span>
       </div>
 
+      <div class="detail-desc">${post.description || ''}</div>
+
       ${post.purchase_link ? `
-      <div class="curation-banner" style="
-        background: linear-gradient(135deg, var(--card-bg, #1e1e2e) 0%, rgba(99,102,241,0.08) 100%);
-        border: 1px solid rgba(99,102,241,0.2);
-        border-radius: 16px;
-        padding: 32px 24px;
-        text-align: center;
-        margin: 30px 0;
-      ">
-        <div style="font-size: 2.8rem; margin-bottom: 12px; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));">🛍️</div>
-        <p style="color: var(--text-sub, #aaa); font-size: 15px; margin: 0 0 24px 0; line-height: 1.6;">
-          해당 상품의 상세 내용과 전체 정보는<br>원본 판매 페이지에서 직접 확인하실 수 있습니다.
-        </p>
+      <div style="text-align: center; margin: 30px 0; padding-top: 24px; border-top: 1px solid var(--border);">
         <a
           href="${esc(post.purchase_link)}"
           target="_blank"
           rel="noopener noreferrer"
-          class="purchase-btn"
-          style="display: inline-flex; width: auto; min-width: 200px; margin: 0 auto;"
-        >
-          원본 링크 보러가기
+          class="btn btn-primary"
+          style="display: inline-flex; align-items: center; gap: 8px; min-width: 200px; padding: 14px 28px; font-size: 15px; font-weight: bold; border-radius: 8px; background: #8b5cf6; border: none; cursor: pointer; justify-content: center;">
+          🔗 원본 링크 보러가기 ↗
         </a>
       </div>
-      ` : `<div class="detail-desc">${esc(post.description || '')}</div>`}
+      ` : ''}
 
       <div class="comments-section">
         <h2 class="comments-title">댓글 ${comments.length}개</h2>
