@@ -864,22 +864,109 @@ function cardHtml(p) {
 async function renderDetail() {
   const el = document.getElementById('content');
   el.innerHTML = `<div class="loading"><div class="spinner"></div> 불러오는 중...</div>`;
+
+  // ── 1. DB에서 게시물 기본 데이터 로드 ───────────────────────────────────────
   const post = await fetchPost(S.postId);
-  if (!post) { el.innerHTML = `<div class="empty-state"><div class="empty-emoji">🚫</div><h3>게시글을 찾을 수 없습니다</h3></div>`; return; }
+  if (!post) {
+    el.innerHTML = `<div class="empty-state"><div class="empty-emoji">🚫</div><h3>게시글을 찾을 수 없습니다</h3></div>`;
+    return;
+  }
   const comments = await fetchComments(post.id);
 
-  const imgHtml = post.image_url
-    ? `<img src="${esc(post.image_url)}" alt="${esc(post.title)}" class="detail-img">`
-    : `<div class="detail-img-placeholder">${getCatEmoji(post.category)}</div>`;
+  // ── 2. 실시간 본문 스크래핑 (purchase_link가 있는 핫딜 게시물 전용) ──────────
+  // DB에 저장된 짧은 description 대신, 원본 URL에서 실시간으로 전체 본문을 파싱합니다.
+  let contentHtml = post.description || '';  // 기본값: DB의 description (실패 시 fallback)
 
-  const commentsHtml = comments.length === 0
-    ? `<p style="color:var(--text-muted);font-size:14px;">아직 댓글이 없습니다. 첫 댓글을 남겨보세요!</p>`
-    : comments.map(c => `
-      <div class="comment-item">
-        <div class="comment-author">${esc(c.users?.email?.split('@')[0] || '익명')}<span class="comment-time">${formatDate(c.created_at)}</span></div>
-        <div class="comment-content">${esc(c.content)}</div>
-      </div>`).join('');
+  if (post.purchase_link) {
+    try {
+      // /api/hotdeal 프록시를 통해 원본 페이지 HTML을 가져옵니다. (CORS 우회)
+      const res = await fetch(`/api/hotdeal?url=${encodeURIComponent(post.purchase_link)}`);
+      if (res.ok) {
+        const htmlText = await res.text();
 
+        // <td> 태그가 DOMParser에서 누락되는 현상 방지 (뽐뿌 등 테이블 기반 커뮤니티 대응)
+        const safeHtml = htmlText
+          .replace(/<td([^>]*)>/gi, '<div$1>')
+          .replace(/<\/td>/gi, '</div>');
+
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(safeHtml, 'text/html');
+
+        // OG 메타 태그 파싱 (contentEl이 없을 때 Fallback으로 사용)
+        const ogImage = doc.querySelector('meta[property="og:image"]')?.content || '';
+        const ogDesc = doc.querySelector('meta[property="og:description"]')?.content || '';
+
+        // ── 본문 컨테이너 탐색 (커뮤니티별 다중 Fallback 셀렉터) ─────────────
+        // 각 커뮤니티마다 본문 컨테이너 클래스명이 다르므로, 우선순위 순으로 탐색합니다.
+        const contentEl =
+          doc.querySelector('.board-contents') ||   // 핫딜집 / 뽐뿌 / 클리앙
+          doc.querySelector('.deal-description') ||  // hotdeal.zip 자체 상세 페이지
+          doc.querySelector('.post-content') ||      // FM코리아 등
+          doc.querySelector('.view-content') ||      // 루리웹 등
+          doc.querySelector('.article-body') ||      // 기타 블로그형
+          doc.querySelector('article') ||            // 시맨틱 태그 범용
+          doc.querySelector('content');              // XML(프록시) 구조
+
+        if (contentEl) {
+          // ── 이미지 절대경로 보정 + Lazy Loading 대응 ─────────────────────────
+          // 핫딜 사이트는 data-src / data-original 속성에 실제 이미지 URL을 담고
+          // src에는 placeholder를 넣는 Lazy Loading 방식을 많이 사용합니다.
+          // 이를 보정하지 않으면 모든 이미지가 엑스박스(깨진 이미지)로 표시됩니다.
+          const originMatch = htmlText.match(/현재 URL:<\/strong>\s*(https?:\/\/[^\s<]+)/);
+          const originUrl = originMatch
+            ? originMatch[1].replace(/&amp;/g, '&')
+            : post.purchase_link;
+
+          contentEl.querySelectorAll('img').forEach(img => {
+            // data-src(Lazy Loading) > data-original > src 우선순위로 실제 URL 추출
+            const src =
+              img.getAttribute('data-src') ||
+              img.getAttribute('data-original') ||
+              img.getAttribute('src');
+
+            if (src) {
+              try {
+                // 상대경로를 절대경로로 변환
+                img.src = new URL(src, originUrl).href;
+              } catch (_) {
+                if (src.startsWith('//')) img.src = 'https:' + src;
+                else if (src.startsWith('/')) img.src = 'https://hotdeal.zip' + src;
+              }
+            }
+            // 모바일에서 이미지가 화면 밖으로 삐져나가지 않도록 강제 제한
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+            img.style.display = 'block';
+            img.style.margin = '10px auto';
+          });
+
+          // XSS 방지 및 불필요한 요소 제거
+          contentEl.querySelectorAll('script, style, iframe').forEach(s => s.remove());
+          contentHtml = contentEl.innerHTML.trim();
+        }
+
+        // ── OG 메타 태그 Fallback ─────────────────────────────────────────────
+        // contentEl을 전혀 찾지 못하거나 본문이 너무 짧을 경우,
+        // OG(Open Graph) 메타 태그의 이미지와 설명으로 대체 렌더링합니다.
+        if (!contentHtml || contentHtml.length < 20) {
+          contentHtml = `
+            <div style="text-align:center;">
+              ${ogImage ? `<img src="${ogImage}" style="max-width:100%; height:auto; border-radius:8px; margin-bottom:20px;">` : ''}
+              <p style="font-size:16px; line-height:1.6; color:var(--text-main); text-align:left; word-break:keep-all;">
+                ${ogDesc ? ogDesc.replace(/\n/g, '<br>') : (post.description || '상세 내용은 원본 링크에서 확인해주세요.')}
+              </p>
+            </div>
+          `;
+        }
+      }
+    } catch (scrapeErr) {
+      // 스크래핑 실패 시 DB의 description을 그대로 사용합니다. (무음 처리)
+      console.warn('[renderDetail] 실시간 파싱 실패, DB description 사용:', scrapeErr.message);
+      contentHtml = post.description || '';
+    }
+  }
+
+  // ── 3. 화면 렌더링 ────────────────────────────────────────────────────────────
   el.innerHTML = `
     <div class="post-detail">
       <a class="btn btn-ghost btn-sm detail-back" data-action="historyBack" href="javascript:void(0)">← 목록으로</a>
@@ -896,8 +983,12 @@ async function renderDetail() {
         <span>👁 조회 ${post.views || 0}회</span>
       </div>
 
-      <div class="detail-desc">${post.description || ''}</div>
+      <!-- 실시간 파싱된 본문 (또는 DB description fallback) -->
+      <div class="detail-desc" style="white-space:normal; overflow:hidden; width:100%; max-width:100%;">
+        ${contentHtml}
+      </div>
 
+      <!-- 원본 링크 버튼: purchase_link가 있는 핫딜 게시물에만 표시 -->
       ${post.purchase_link ? `
       <div style="text-align: center; margin: 30px 0; padding-top: 24px; border-top: 1px solid var(--border);">
         <a
@@ -911,37 +1002,32 @@ async function renderDetail() {
       </div>
       ` : ''}
 
+      <!-- 댓글 섹션 (기존 구조 그대로 유지) -->
       <div class="comments-section">
         <h2 class="comments-title">댓글 ${comments.length}개</h2>
         ${S.user
-      ? `<div class="comment-form">
+          ? `<div class="comment-form">
                <textarea id="c-input" class="comment-input" placeholder="댓글을 입력해 주세요..."></textarea>
                <button class="btn btn-primary btn-sm" onclick="submitComment('${post.id}')">등록</button>
              </div>`
-      : `<p style="font-size:13px;color:var(--text-sub);margin-bottom:16px;">
+          : `<p style="font-size:13px;color:var(--text-sub);margin-bottom:16px;">
                댓글을 남기려면 <a href="javascript:void(0)" onclick="showLoginModal();return false;" style="color:var(--primary);font-weight:600;">로그인</a>이 필요합니다.
              </p>`}
         <div id="comment-list">
           ${comments.length === 0
-      ? `<p style="color:var(--text-sub);font-size:13px;">아직 댓글이 없습니다.</p>`
-      : comments.map(c => `
-              <div class="comment-item">
-                <div class="comment-author">${esc(c.users?.email?.split('@')[0] || '익명')}<span class="comment-time">${formatDate(c.created_at)}</span></div>
-                <div class="comment-content">${esc(c.content)}</div>
-              </div>`).join('')}
+            ? `<p style="color:var(--text-sub);font-size:13px;">아직 댓글이 없습니다.</p>`
+            : comments.map(c => `
+                <div class="comment-item">
+                  <div class="comment-author">${esc(c.users?.email?.split('@')[0] || '익명')}<span class="comment-time">${formatDate(c.created_at)}</span></div>
+                  <div class="comment-content">${esc(c.content)}</div>
+                </div>`).join('')}
         </div>
-      </div>`;
+      </div>
+    </div>`;
 
-  console.log("--- 댓글 동기화 디버깅 시작 ---");
-  console.log("1. 불러온 comments 배열 길이:", comments.length);
+  // 댓글 수 DOM 동기화
   const countEl = document.getElementById('detail-comment-count');
-  console.log("2. DOM에서 요소 찾기 결과:", countEl);
-  if (countEl) {
-    countEl.innerText = comments.length;
-    console.log("3. DOM 업데이트 성공!");
-  } else {
-    console.error("3. 치명적 에러: DOM에서 'detail-comment-count' 요소를 찾을 수 없음! 렌더링 타이밍 꼬임.");
-  }
+  if (countEl) countEl.innerText = comments.length;
 }
 
 async function submitComment(postId) {
