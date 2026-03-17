@@ -483,7 +483,7 @@ function selectCat(id) {
 
 // Feed pagination UI replaced by a "Load more" button. S.page resets in renderFeed.
 
-window.loadMore = async function() {
+window.loadMore = async function () {
   const btn = document.getElementById('btn-load-more');
   if (btn) {
     btn.disabled = true;
@@ -492,7 +492,7 @@ window.loadMore = async function() {
 
   S.page += 1;
   const isServerCat = S.category === 'inquiry';
-  
+
   if (S.category === 'hotdeal') {
     const deals = await fetchHotDeals();
     const container = document.querySelector('.hotdeal-list-container');
@@ -561,11 +561,10 @@ window.loadMore = async function() {
 };
 
 function renderLoadMoreButton() {
-  if (S.totalPages <= 1 || S.page >= S.totalPages) return '';
   return `
-    <div id="load-more-container" class="load-more-container">
-      <button id="btn-load-more" class="btn btn-outline load-more-btn" data-action="loadMore">
-        더보기 <span class="load-more-sub">(다음 20개)</span>
+    <div id="load-more-container" style="text-align: center; margin: 30px 0; width: 100%;">
+      <button id="btn-load-more" class="btn btn-outline" data-action="loadMore" style="width: 100%; max-width: 400px; padding: 15px; font-size: 16px; font-weight: bold; border-radius: 8px; cursor: pointer;">
+        더보기 <span style="font-size:12px;opacity:0.8;">(다음 20개)</span>
       </button>
     </div>
   `;
@@ -604,101 +603,104 @@ async function fetchHotdealDetail(url) {
 
 async function renderHotdealDetail() {
   const el = document.getElementById('content');
-  el.innerHTML = `<div class="loading" > <div class="spinner"></div> 불러오는 중...</div > `;
+  el.innerHTML = `<div class="loading"><div class="spinner"></div> 불러오는 중...</div>`;
 
   try {
     const rawParam = decodeURIComponent(S.postId);
-    // If it's a slug (doesn't start with http), build the canonical hotdeal.zip URL
     const targetUrl = rawParam.startsWith('http') ? rawParam : `https://hotdeal.zip/${rawParam}`;
-
     const htmlText = await fetchHotdealDetail(targetUrl);
     if (!htmlText) throw new Error('데이터를 불러오지 못했습니다.');
 
-    // Pre-process HTML to prevent <td> from being violently stripped by DOMParser when not in <table>
-    // This affects both proxy HTML and specific canonical pages like Ppomppu
-    let safeHtmlText = htmlText;
-    if (htmlText.includes('<product_name>') || htmlText.includes('class="board-contents"') || htmlText.includes("class='board-contents'")) {
-      safeHtmlText = htmlText.replace(/<td([^>]*)>/gi, '<div$1>').replace(/<\/td>/gi, '</div>');
-    }
-
     const parser = new DOMParser();
-    const doc = parser.parseFromString(safeHtmlText, 'text/html');
-
-    // 1. Try Canonical Hotdeal.zip structure first
-    let title = doc.querySelector('.deal-title')?.textContent?.trim();
-    let price = doc.querySelector('.price-value')?.textContent?.trim();
-    let shipping = '';
-    let mall = doc.querySelector('.shop-name')?.innerText?.trim();
-
-    // Check if it's a 404/deleted canonical page
-    if (title === '🚨 신고하기' || doc.querySelector('title')?.textContent.includes('페이지를 찾을 수 없습니다')) {
-      throw new Error('이 핫딜은 삭제되었거나 더 이상 접근할 수 없습니다.');
-    }
-
+    let doc;
+    let title = '제목 없음';
+    let price = '';
+    let mall = '';
     let externalLinks = [];
-    const buyBtn = doc.querySelector('.buy-button');
-    if (buyBtn && buyBtn.getAttribute('href')) {
-      externalLinks.push(buyBtn.getAttribute('href'));
-    }
+    let contentHtml = '';
 
-    // Universal content selector for various communities (FMKorea: article, Quasarzone/Ppomppu: .deal-description)
-    let contentEl = doc.querySelector('article') || doc.querySelector('.deal-description');
+    // 1. 프록시 서버(XML) 구조인지, 원본 HTML인지 체크
+    if (htmlText.includes('<product_name>') || htmlText.includes('<content>')) {
+      // <td> 태그 날아가는 현상 방지용 치환
+      const safeHtml = htmlText.replace(/<td([^>]*)>/gi, '<div$1>').replace(/<\/td>/gi, '</div>');
+      doc = parser.parseFromString(safeHtml, 'text/html');
 
-    // 2. Fallback to XML-like structure (proxy)
-    if (!title) title = doc.querySelector('product_name')?.textContent || '제목 없음';
-    if (!price) price = doc.querySelector('price')?.textContent || '';
-    if (!shipping) shipping = doc.querySelector('shipping_cost')?.textContent || '';
-    if (!mall) mall = doc.querySelector('shopping_mall')?.textContent || '';
-    if (externalLinks.length === 0) {
-      const linkMatches = [...htmlText.matchAll(/<link>(.*?)<\/link>/g)];
+      title = doc.querySelector('product_name')?.textContent?.trim() || '제목 없음';
+      price = doc.querySelector('price')?.textContent?.trim() || '';
+      mall = doc.querySelector('shopping_mall')?.textContent?.trim() || '';
+
+      const linkMatches = [...safeHtml.matchAll(/<link>(.*?)<\/link>/g)];
       externalLinks = linkMatches.map(m => m[1].trim());
-    }
 
-    // Fallback proxy content wrapper
-    if (!contentEl) contentEl = doc.querySelector('content');
-
-    // Origin resolution for images
-    const originMatch = htmlText.match(/현재 URL:<\/strong>\s*(https?:\/\/[^\s<]+)/);
-    const originUrl = originMatch ? originMatch[1].replace(/&amp;/g, '&') : targetUrl;
-
-    if (contentEl) {
-      contentEl.querySelectorAll('img').forEach(img => {
-        const src = img.getAttribute('src');
-        if (src) {
-          try {
-            img.src = new URL(src, originUrl).href;
-          } catch (e) {
-            if (src.startsWith('//')) img.src = 'https:' + src;
-            else if (src.startsWith('/')) img.src = 'https://hotdeal.zip' + src;
+      let contentEl = doc.querySelector('content');
+      if (contentEl) {
+        // 이미지 절대 경로 보정
+        const originMatch = safeHtml.match(/현재 URL:<\/strong>\s*(https?:\/\/[^\s<]+)/);
+        const originUrl = originMatch ? originMatch[1].replace(/&amp;/g, '&') : targetUrl;
+        contentEl.querySelectorAll('img').forEach(img => {
+          const src = img.getAttribute('src');
+          if (src) {
+            try { img.src = new URL(src, originUrl).href; }
+            catch (e) {
+              if (src.startsWith('//')) img.src = 'https:' + src;
+            }
           }
-        }
-      });
-      contentEl.querySelectorAll('script, style, iframe').forEach(s => s.remove());
+          // 모바일 화면 밖으로 안 삐져나가게 방어
+          img.style.maxWidth = '100%';
+          img.style.height = 'auto';
+        });
+        contentHtml = contentEl.innerHTML;
+      }
+    } else {
+      // 일반 웹페이지 HTML인 경우
+      doc = parser.parseFromString(htmlText, 'text/html');
+      title = doc.querySelector('.deal-title')?.textContent?.trim() || '제목 없음';
+      price = doc.querySelector('.price-value')?.textContent?.trim() || '';
+      mall = doc.querySelector('.shop-name')?.innerText?.trim() || '';
+
+      const buyBtn = doc.querySelector('.buy-button');
+      if (buyBtn && buyBtn.getAttribute('href')) externalLinks.push(buyBtn.getAttribute('href'));
+
+      let contentEl = doc.querySelector('article') || doc.querySelector('.deal-description');
+      if (contentEl) {
+        contentEl.querySelectorAll('img').forEach(img => {
+          img.style.maxWidth = '100%';
+          img.style.height = 'auto';
+        });
+        contentHtml = contentEl.innerHTML;
+      }
     }
 
-    const contentHtml = contentEl?.innerHTML || '내용이 없습니다.';
+    if (!contentHtml || contentHtml.trim() === '') {
+      contentHtml = '<p style="text-align:center; padding: 20px;">본문 내용을 불러올 수 없습니다.</p>';
+    }
 
+    // 화면 렌더링 (글+이미지 쫙 깔고, 맨 밑에 버튼)
     el.innerHTML = `
       <div class="post-detail">
         <a class="btn btn-ghost btn-sm detail-back" data-action="historyBack" href="javascript:void(0)">← 목록으로</a>
-        <div class="detail-cat">${esc(mall || '')}</div>
+        <div class="detail-cat">${esc(mall)}</div>
         <h1 class="detail-title">${esc(title)}</h1>
-        <div class="detail-price">${esc(formatPrice(price))} ${shipping ? `<span style="font-size:14px;color:var(--text-muted);font-weight:normal;">/ 배송비: ${esc(shipping)}</span>` : ''}</div>
-        <div class="comments-section" style="padding-top:20px;">
-          <div class="detail-desc" style="white-space:normal; overflow:hidden;">
-            ${contentHtml}
-          </div>
+        <div class="detail-price">${esc(formatPrice(price))}</div>
+        
+        <div class="detail-body-content" style="margin-top: 30px; font-size: 15px; line-height: 1.6; word-break: break-word; overflow-wrap: break-word;">
+          ${contentHtml}
         </div>
-        <div style="margin-top:30px; margin-bottom: 20px;">
-          ${externalLinks.length > 0 ? `<a href="${esc(externalLinks[0])}" target="_blank" rel="noopener noreferrer" class="purchase-btn">🔗 원본 링크 보러가기</a>` : ''}
+        
+        <div style="text-align: center; margin: 50px 0 30px 0; padding-top: 30px; border-top: 1px solid var(--border-color);">
+          ${externalLinks.length > 0
+        ? `<a href="${esc(externalLinks[0])}" target="_blank" rel="noopener noreferrer" class="btn btn-primary" style="display: inline-flex; min-width: 240px; padding: 16px; font-size: 16px; font-weight: bold; border-radius: 8px; background: #8b5cf6; border: none; cursor:pointer;">🔗 원본 게시글 보러가기 ↗</a>`
+        : '<p style="color: #ef4444;">원본 링크를 찾을 수 없습니다.</p>'}
         </div>
       </div>
     `;
   } catch (e) {
     el.innerHTML = `<div class="empty-state"><div class="empty-emoji">🚫</div><h3>핫딜을 불러올 수 없습니다</h3><p>${e.message}</p></div>`;
+  } finally {
+    const spinner = el.querySelector('.loading');
+    if (spinner) spinner.remove();
   }
 }
-
 // ─────────────────────────────────────────────
 // FEED
 // ─────────────────────────────────────────────
@@ -714,7 +716,7 @@ async function renderFeed() {
       console.log(`[renderFeed] Fetching hotdeals...`);
       const deals = await fetchHotDeals();
       console.log(`[renderFeed] Fetched ${deals?.length || 0} hotdeals`);
-      
+
       if (!deals || deals.length === 0) {
         el.innerHTML = `<div class="empty-state"><div class="empty-emoji">📭</div><h3>핫딜이 없습니다</h3><p>현재 불러올 수 있는 핫딜이 없습니다.</p></div>`;
         return;
@@ -754,7 +756,7 @@ async function renderFeed() {
     console.log(`[renderFeed] Fetching posts for category: ${S.category}`);
     const posts = await fetchPosts(S.category);
     console.log(`[renderFeed] Fetched ${posts?.length || 0} posts`);
-    
+
     const catLabel = getCatLabel(S.category);
     const isServerCat = S.category === 'inquiry';
     const canPost = isServerCat ? !!S.user : (S.role === 'seller' || S.role === 'admin');
@@ -772,16 +774,14 @@ async function renderFeed() {
       ${S.isDemo ? `<div class="demo-banner">🔧 <strong>데모 모드</strong> — main.js 상단의 Supabase 키를 입력하면 실제 데이터가 연동됩니다.</div>` : ''}
       ${cardsHtml}
       ${renderLoadMoreButton()}`;
-      
+
     console.log(`[renderFeed] Rendering complete`);
   } catch (error) {
     console.error(`[renderFeed] Error:`, error);
     el.innerHTML = `<div class="empty-state"><div class="empty-emoji">❌</div><h3>데이터를 불러오는 중 오류가 발생했습니다</h3><p>${error.message}</p></div>`;
   } finally {
-    // 로딩 스피너 강제 제거 (innerHTML로 덮어씌워졌어도 방어적 차원에서)
     const spinner = el.querySelector('.loading');
     if (spinner) {
-      console.log(`[renderFeed] Removing loading spinner in finally block`);
       spinner.remove();
     }
   }
@@ -1238,7 +1238,7 @@ window.addAdminCategory = async function (e) {
 // Global Event Delegation for Dynamic Elements
 document.addEventListener('click', async function (e) {
   const target = e.target;
-  
+
   // 1. Actions (buttons, toggles)
   const actionEl = target.closest('[data-action]');
   if (actionEl) {
@@ -1247,7 +1247,7 @@ document.addEventListener('click', async function (e) {
     const action = actionEl.getAttribute('data-action');
     const param = actionEl.getAttribute('data-param');
     const param2 = actionEl.getAttribute('data-param2');
-    
+
     if (action === 'toggleUpvote') {
       if (typeof window.toggleUpvote === 'function') window.toggleUpvote(param, param2);
     } else if (action === 'loadMore') {
