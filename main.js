@@ -650,16 +650,20 @@ async function renderHotdealDetail() {
     let contentHtml = '';
 
     if (contentEl) {
+      // 원본 사이트의 origin (scheme + host) — 상대경로 이미지 절대화에 사용
+      const originBase = (() => { try { return new URL(originUrl).origin; } catch(_) { return 'https://hotdeal.zip'; } })();
       contentEl.querySelectorAll('img').forEach(img => {
         // Lazy Loading 이미지 완벽 대응 (data-src, data-original 우선)
         const src = img.getAttribute('data-src') || img.getAttribute('data-original') || img.getAttribute('src');
         if (src) {
-          try { img.src = new URL(src, originUrl).href; }
+          try { img.src = new URL(src, originBase).href; }
           catch (e) {
             if (src.startsWith('//')) img.src = 'https:' + src;
-            else if (src.startsWith('/')) img.src = 'https://hotdeal.zip' + src;
+            else if (src.startsWith('/')) img.src = originBase + src;
           }
         }
+        // 핫링크 방어(Hotlink Protection) 우회: referrer를 전송하지 않아 이미지 차단 방지
+        img.setAttribute('referrerpolicy', 'no-referrer');
         img.style.maxWidth = '100%';
         img.style.height = 'auto';
         img.style.display = 'block';
@@ -916,6 +920,8 @@ async function renderDetail() {
           const originUrl = originMatch
             ? originMatch[1].replace(/&amp;/g, '&')
             : post.purchase_link;
+          // origin만 추출 (scheme + host) — 상대경로 절대화에 사용
+          const originBase = (() => { try { return new URL(originUrl).origin; } catch(_) { return new URL(post.purchase_link).origin; } })();
 
           contentEl.querySelectorAll('img').forEach(img => {
             // data-src(Lazy Loading) > data-original > src 우선순위로 실제 URL 추출
@@ -926,13 +932,15 @@ async function renderDetail() {
 
             if (src) {
               try {
-                // 상대경로를 절대경로로 변환
-                img.src = new URL(src, originUrl).href;
+                // 상대경로를 절대경로로 변환 (origin 기준으로 확실하게 보정)
+                img.src = new URL(src, originBase).href;
               } catch (_) {
                 if (src.startsWith('//')) img.src = 'https:' + src;
-                else if (src.startsWith('/')) img.src = 'https://hotdeal.zip' + src;
+                else if (src.startsWith('/')) img.src = originBase + src;
               }
             }
+            // 핫링크 방어(Hotlink Protection) 우회: referrer를 전송하지 않아 이미지 차단 방지
+            img.setAttribute('referrerpolicy', 'no-referrer');
             // 모바일에서 이미지가 화면 밖으로 삐져나가지 않도록 강제 제한
             img.style.maxWidth = '100%';
             img.style.height = 'auto';
