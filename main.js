@@ -780,7 +780,43 @@ async function renderHotdealDetail() {
     }
 
     // 3차 방어선: 그래도 본문이 비었을 때 OG 메타 태그로 Fallback — 절대 빈 화면을 보이지 않습니다.
-    if (!contentHtml || contentHtml.length < 20) {
+    // ── WAF(Cloudflare 등) 보안 페이지 감지 + Graceful Degradation UI ─────────
+    // 아카라이브/퀘이사존 등은 Cloudflare WAF가 걸려 있으면
+    // 서버 프록시(Workers)로 접근해도 정상 본문 대신 "보안 확인/챌린지" HTML을 반환합니다.
+    // 이때 OG 메타 태그를 억지로 보여주면 사용자 입장에선 '빈 화면/짧은 화면'처럼 느껴지므로,
+    // 명확한 안내 UI로 우아하게 다운그레이드(Graceful Degradation) 합니다.
+    const wafKeywords = [
+      'just a moment',
+      'cloudflare',
+      '보안 확인',
+      '로봇이 아닙니다',
+      'access denied',
+      '아카라이브',
+    ];
+    const wafHitByHtml = wafKeywords.some(k => htmlText.toLowerCase().includes(k.toLowerCase()));
+    const contentTextLen = (() => {
+      if (!contentHtml) return 0;
+      const tmp = document.createElement('div');
+      tmp.innerHTML = contentHtml;
+      return (tmp.textContent || '').replace(/\s+/g, '').length;
+    })();
+    const wafHitByContent = contentTextLen > 0 && contentTextLen < 50;
+    const isWafBlocked = wafHitByHtml || wafHitByContent;
+
+    if (isWafBlocked) {
+      contentHtml = `
+        <div style="text-align:center; padding: 40px 20px; background: var(--bg-secondary, #f8fafc); border-radius: 12px;">
+          <div style="font-size: 40px; margin-bottom: 16px;">🛡️</div>
+          <h3 style="margin-bottom: 8px; color: var(--text-main);">보안 정책 안내</h3>
+          <p style="color: var(--text-sub); line-height: 1.6; word-break: keep-all;">
+            해당 쇼핑몰/커뮤니티의 보안 정책으로 인해 본문 미리보기를 제공할 수 없습니다.<br>
+            아래 <b>[원본 링크 보러가기]</b> 버튼을 눌러 상세 정보를 확인해 주세요.
+          </p>
+        </div>
+      `;
+    }
+    // WAF가 아닌데도 본문이 비었으면 OG 메타 태그로 Fallback
+    else if (!contentHtml || contentHtml.length < 20) {
       contentHtml = `
         <div style="text-align:center;">
           ${ogImage ? `<img src="https://wsrv.nl/?url=${encodeURIComponent(ogImage)}" referrerpolicy="no-referrer" loading="lazy" style="max-width:100%; height:auto; border-radius:8px; margin-bottom:20px;">` : ''}
@@ -1148,10 +1184,42 @@ async function renderDetail() {
           }
         }
 
-        // ── OG 메타 태그 Fallback ─────────────────────────────────────────────
-        // contentEl/스마트 폴백으로도 본문을 확보하지 못하거나 본문이 너무 짧을 경우,
-        // OG(Open Graph) 메타 태그의 이미지와 설명으로 대체 렌더링합니다.
-        if (!contentHtml || contentHtml.length < 20) {
+        // ── WAF(Cloudflare 등) 보안 페이지 감지 + Graceful Degradation UI ─────
+        // 아카라이브/퀘이사존 등은 Cloudflare WAF가 걸려 있으면
+        // 서버 프록시(Workers)로 접근해도 정상 본문 대신 "보안 확인/챌린지" HTML을 반환합니다.
+        // 이때는 메타 태그로 억지 렌더링하지 않고, 안내 UI로 우아하게 다운그레이드합니다.
+        const wafKeywords = [
+          'just a moment',
+          'cloudflare',
+          '보안 확인',
+          '로봇이 아닙니다',
+          'access denied',
+          '아카라이브',
+        ];
+        const wafHitByHtml = wafKeywords.some(k => htmlText.toLowerCase().includes(k.toLowerCase()));
+        const contentTextLen = (() => {
+          if (!contentHtml) return 0;
+          const tmp = document.createElement('div');
+          tmp.innerHTML = contentHtml;
+          return (tmp.textContent || '').replace(/\s+/g, '').length;
+        })();
+        const wafHitByContent = contentTextLen > 0 && contentTextLen < 50;
+        const isWafBlocked = wafHitByHtml || wafHitByContent;
+
+        if (isWafBlocked) {
+          contentHtml = `
+            <div style="text-align:center; padding: 40px 20px; background: var(--bg-secondary, #f8fafc); border-radius: 12px;">
+              <div style="font-size: 40px; margin-bottom: 16px;">🛡️</div>
+              <h3 style="margin-bottom: 8px; color: var(--text-main);">보안 정책 안내</h3>
+              <p style="color: var(--text-sub); line-height: 1.6; word-break: keep-all;">
+                해당 쇼핑몰/커뮤니티의 보안 정책으로 인해 본문 미리보기를 제공할 수 없습니다.<br>
+                아래 <b>[원본 링크 보러가기]</b> 버튼을 눌러 상세 정보를 확인해 주세요.
+              </p>
+            </div>
+          `;
+        }
+        // WAF가 아닌데도 본문이 비었으면 OG 메타 태그로 Fallback
+        else if (!contentHtml || contentHtml.length < 20) {
           contentHtml = `
             <div style="text-align:center;">
               ${ogImage ? `<img src="${ogImage}" style="max-width:100%; height:auto; border-radius:8px; margin-bottom:20px;">` : ''}
