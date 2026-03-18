@@ -637,18 +637,23 @@ async function renderHotdealDetail() {
       externalLinks = linkMatches.map(m => m[1].trim());
     }
 
-    // ── 커뮤니티별 다중 본문 셀렉터 대응 로직 ───────────────────────────────
-    // 각 커뮤니티마다 본문 컨테이너 클래스명이 달라 단일 셀렉터로는 찾지 못합니다.
-    // 우선순위 순서로 탐색하여 첫 번째로 일치하는 컨테이너를 사용합니다.
-    const contentEl =
-      doc.querySelector('.board-contents') ||   // 핫딜집 / 뽐뿌 / 클리앙
-      doc.querySelector('article') ||            // 시맨틱 태그 범용
-      doc.querySelector('.deal-description') ||  // hotdeal.zip 자체 상세
-      doc.querySelector('.post-content') ||      // FM코리아 등
-      doc.querySelector('.view-content') ||      // 루리웹 등
-      doc.querySelector('.post_content') ||      // 일부 XE 기반 커뮤니티
-      doc.querySelector('.content') ||           // 범용 content 클래스
-      doc.querySelector('content');              // XML(프록시) 구조
+    // ── 커뮤니티별 다중 본문 셀렉터 + 스마트 폴백 ─────────────────────────────
+    // 1차: 사이트별로 자주 쓰이는 본문 컨테이너를 우선순위대로 탐색합니다.
+    // 2차: 아무 것도 못 찾으면 body 전체를 훑어서 "텍스트가 가장 많은 큰 div"를 자동 선택합니다.
+    //      이렇게 하면 커뮤니티마다 DOM 구조가 달라도 최소한 본문 텍스트는 항상 보여집니다.
+    let contentEl =
+      doc.querySelector('.board-contents') ||       // 핫딜집 / 뽐뿌 / 클리앙
+      doc.querySelector('.deal-description') ||     // hotdeal.zip 자체 상세
+      doc.querySelector('.post-content') ||         // FM코리아 등
+      doc.querySelector('.post-article') ||         // 일부 블로그/게시판
+      doc.querySelector('.post_content') ||         // XE 기반 커뮤니티
+      doc.querySelector('.content-body') ||         // 지마켓 등
+      doc.querySelector('.view-content') ||         // 루리웹 등
+      doc.querySelector('.board-view-content') ||   // 기타 게시판 뷰
+      doc.querySelector('div[itemprop="description"]') || // 스키마 마크업 기반
+      doc.querySelector('.content') ||              // 범용 content 클래스
+      doc.querySelector('article') ||               // 시맨틱 태그 범용
+      doc.querySelector('content');                 // XML(프록시) 구조
 
     const originMatch = htmlText.match(/현재 URL:<\/strong>\s*(https?:\/\/[^\s<]+)/);
     const originUrl = originMatch ? originMatch[1].replace(/&amp;/g, '&') : targetUrl;
@@ -663,28 +668,31 @@ async function renderHotdealDetail() {
       // wsrv.nl은 무료 이미지 CDN 프록시로, 서버 측에서 이미지를 가져오므로
       // 브라우저의 Referer 헤더나 CORS 정책이 전혀 개입하지 않아 차단을 무력화합니다.
       contentEl.querySelectorAll('img').forEach(img => {
-        // Lazy Loading 이미지 속성 탐색 (5단계 폴백)
-        // 커뮤니티마다 실제 이미지 URL을 다른 속성에 숨깁니다.
-        const src =
+        // Lazy Loading 이미지 속성 탐색 (4단계 우선순위 + 예외 케이스)
+        // data-src → data-original → data-lazy-src → src 순으로 해석하며,
+        // 일부 커뮤니티에서 사용하는 lazy-src도 마지막에 함께 폴백으로 처리합니다.
+        const rawSrc =
           img.getAttribute('data-src') ||
           img.getAttribute('data-original') ||
           img.getAttribute('data-lazy-src') ||
-          img.getAttribute('lazy-src') ||
-          img.getAttribute('src');
+          img.getAttribute('src') ||
+          img.getAttribute('lazy-src');
 
-        if (src) {
+        if (rawSrc) {
           // 1단계: 상대경로 → 절대경로 변환
-          let finalUrl = src;
-          try { finalUrl = new URL(src, originBase).href; }
+          let finalUrl = rawSrc;
+          try { finalUrl = new URL(rawSrc, originBase).href; }
           catch (_) {
-            if (src.startsWith('//')) finalUrl = 'https:' + src;
-            else if (src.startsWith('/')) finalUrl = originBase + src;
+            if (rawSrc.startsWith('//')) finalUrl = 'https:' + rawSrc;
+            else if (rawSrc.startsWith('/')) finalUrl = originBase + rawSrc;
           }
           // 2단계: wsrv.nl 이미지 프록시로 래핑 (핫링크/CORS 완전 우회)
           img.src = 'https://wsrv.nl/?url=' + encodeURIComponent(finalUrl);
         }
-        img.setAttribute('referrerpolicy', 'no-referrer'); // 핫링크 방어 2중 우회
-        img.setAttribute('loading', 'lazy');               // 스크롤 시 지연 로드
+        // referrerpolicy를 항상 no-referrer로 강제 주입하여
+        // 원본 서버에 Referer가 절대 전달되지 않도록 합니다.
+        img.setAttribute('referrerpolicy', 'no-referrer');
+        img.setAttribute('loading', 'lazy');
         img.style.maxWidth = '100%';
         img.style.height = 'auto';
         img.style.display = 'block';
@@ -694,7 +702,52 @@ async function renderHotdealDetail() {
       contentHtml = contentEl.innerHTML.trim();
     }
 
-    // 본문이 비었을 때 OG 메타 태그로 Fallback — 절대 빈 화면을 보이지 않습니다
+    // 2차 방어선: 셀렉터로 본문을 못 찾았거나 내용이 너무 짧은 경우,
+    // body 내 모든 div를 검사해 "텍스트 길이가 가장 긴 div(최소 500자)"를 자동 선택합니다.
+    // 이렇게 하면 새로운 커뮤니티 구조라도 최소 텍스트는 항상 사용자에게 보여집니다.
+    if (!contentHtml || contentHtml.replace(/\s+/g, '').length < 50) {
+      let bestDiv = null;
+      let bestLen = 0;
+      doc.body?.querySelectorAll('div').forEach(div => {
+        const text = div.innerText || div.textContent || '';
+        const len = text.replace(/\s+/g, '').length;
+        if (len >= 500 && len > bestLen) {
+          bestLen = len;
+          bestDiv = div;
+        }
+      });
+      if (bestDiv) {
+        // 스마트 폴백 div에 대해서도 동일한 이미지 정규화/프록시 로직을 다시 적용
+        const originBase = (() => { try { return new URL(originUrl).origin; } catch(_) { return 'https://hotdeal.zip'; } })();
+        bestDiv.querySelectorAll('img').forEach(img => {
+          const rawSrc =
+            img.getAttribute('data-src') ||
+            img.getAttribute('data-original') ||
+            img.getAttribute('data-lazy-src') ||
+            img.getAttribute('src') ||
+            img.getAttribute('lazy-src');
+          if (rawSrc) {
+            let finalUrl = rawSrc;
+            try { finalUrl = new URL(rawSrc, originBase).href; }
+            catch (_) {
+              if (rawSrc.startsWith('//')) finalUrl = 'https:' + rawSrc;
+              else if (rawSrc.startsWith('/')) finalUrl = originBase + rawSrc;
+            }
+            img.src = 'https://wsrv.nl/?url=' + encodeURIComponent(finalUrl);
+          }
+          img.setAttribute('referrerpolicy', 'no-referrer');
+          img.setAttribute('loading', 'lazy');
+          img.style.maxWidth = '100%';
+          img.style.height = 'auto';
+          img.style.display = 'block';
+          img.style.margin = '10px auto';
+        });
+        bestDiv.querySelectorAll('script, style, iframe').forEach(s => s.remove());
+        contentHtml = bestDiv.innerHTML.trim();
+      }
+    }
+
+    // 3차 방어선: 그래도 본문이 비었을 때 OG 메타 태그로 Fallback — 절대 빈 화면을 보이지 않습니다.
     if (!contentHtml || contentHtml.length < 20) {
       contentHtml = `
         <div style="text-align:center;">
@@ -921,52 +974,55 @@ async function renderDetail() {
         const ogImage = doc.querySelector('meta[property="og:image"]')?.content || '';
         const ogDesc = doc.querySelector('meta[property="og:description"]')?.content || '';
 
-        // ── 커뮤니티별 다중 본문 셀렉터 대응 로직 ─────────────────────────────
-        // 각 커뮤니티마다 본문 컨테이너 클래스명이 달라 단일 셀렉터로는 찾지 못합니다.
-        // 우선순위 순서로 탐색하여 첫 번째로 일치하는 컨테이너를 사용합니다.
-        const contentEl =
-          doc.querySelector('.board-contents') ||   // 핫딜집 / 뽐뿌 / 클리앙
-          doc.querySelector('.deal-description') ||  // hotdeal.zip 자체 상세 페이지
-          doc.querySelector('.post-content') ||      // FM코리아 등
-          doc.querySelector('.view-content') ||      // 루리웹 등
-          doc.querySelector('.article-body') ||      // 기타 블로그형
-          doc.querySelector('.post_content') ||      // 일부 XE 기반 커뮤니티
-          doc.querySelector('.content') ||           // 범용 content 클래스
-          doc.querySelector('article') ||            // 시맨틱 태그 범용
-          doc.querySelector('content');              // XML(프록시) 구조
+        // ── 커뮤니티별 다중 본문 셀렉터 + 스마트 폴백 ─────────────────────────
+        // 1차: 사이트별로 자주 쓰이는 본문 컨테이너를 우선순위대로 탐색합니다.
+        // 2차: 아무 것도 못 찾으면 body 전체를 훑어서 "텍스트가 가장 많은 큰 div"를 자동 선택합니다.
+        //      이렇게 하면 커뮤니티마다 DOM 구조가 달라도 최소한 본문 텍스트는 항상 보여집니다.
+        let contentEl =
+          doc.querySelector('.board-contents') ||       // 핫딜집 / 뽐뿌 / 클리앙
+          doc.querySelector('.deal-description') ||     // hotdeal.zip 자체 상세 페이지
+          doc.querySelector('.post-content') ||         // FM코리아 등
+          doc.querySelector('.post-article') ||         // 일부 블로그/게시판
+          doc.querySelector('.post_content') ||         // XE 기반 커뮤니티
+          doc.querySelector('.content-body') ||         // 지마켓 등
+          doc.querySelector('.view-content') ||         // 루리웹 등
+          doc.querySelector('.board-view-content') ||   // 기타 게시판 뷰
+          doc.querySelector('div[itemprop="description"]') || // 스키마 마크업 기반
+          doc.querySelector('.article-body') ||         // 기타 블로그형
+          doc.querySelector('.content') ||              // 범용 content 클래스
+          doc.querySelector('article') ||               // 시맨틱 태그 범용
+          doc.querySelector('content');                 // XML(프록시) 구조
+
+        // ── 이미지 절대경로 보정 + Lazy Loading 대응 ─────────────────────────
+        // 핫딜 사이트는 data-src / data-original 속성에 실제 이미지 URL을 담고
+        // src에는 placeholder를 넣는 Lazy Loading 방식을 많이 사용합니다.
+        // 이를 보정하지 않으면 모든 이미지가 엑스박스(깨진 이미지)로 표시됩니다.
+        const originMatch = htmlText.match(/현재 URL:<\/strong>\s*(https?:\/\/[^\s<]+)/);
+        const originUrl = originMatch
+          ? originMatch[1].replace(/&amp;/g, '&')
+          : post.purchase_link;
+        // origin만 추출 (scheme + host) — 상대경로 절대화에 사용
+        const originBase = (() => { try { return new URL(originUrl).origin; } catch(_) { return new URL(post.purchase_link).origin; } })();
 
         if (contentEl) {
-          // ── 이미지 절대경로 보정 + Lazy Loading 대응 ─────────────────────────
-          // 핫딜 사이트는 data-src / data-original 속성에 실제 이미지 URL을 담고
-          // src에는 placeholder를 넣는 Lazy Loading 방식을 많이 사용합니다.
-          // 이를 보정하지 않으면 모든 이미지가 엑스박스(깨진 이미지)로 표시됩니다.
-          const originMatch = htmlText.match(/현재 URL:<\/strong>\s*(https?:\/\/[^\s<]+)/);
-          const originUrl = originMatch
-            ? originMatch[1].replace(/&amp;/g, '&')
-            : post.purchase_link;
-          // origin만 추출 (scheme + host) — 상대경로 절대화에 사용
-          const originBase = (() => { try { return new URL(originUrl).origin; } catch(_) { return new URL(post.purchase_link).origin; } })();
-
-          // ── CORS 및 핫링크 방어를 위한 이미지 프록시 로직 ──────────────────
-          // 퀘이사존/펨코 등은 다른 사이트에서 이미지를 불러오면 차단합니다(핫링크 방어).
-          // wsrv.nl은 무료 이미지 CDN 프록시로, 서버 측에서 이미지를 가져오므로
-          // 브라우저의 Referer 헤더나 CORS 정책이 전혀 개입하지 않아 차단을 무력화합니다.
           contentEl.querySelectorAll('img').forEach(img => {
-            // Lazy Loading 이미지 속성 탐색 (5단계 폴백)
-            const src =
+            // Lazy Loading 이미지 속성 탐색 (4단계 우선순위 + 예외 케이스)
+            // data-src → data-original → data-lazy-src → src 순으로 해석하며,
+            // 일부 커뮤니티에서 사용하는 lazy-src도 마지막에 함께 폴백으로 처리합니다.
+            const rawSrc =
               img.getAttribute('data-src') ||
               img.getAttribute('data-original') ||
               img.getAttribute('data-lazy-src') ||
-              img.getAttribute('lazy-src') ||
-              img.getAttribute('src');
+              img.getAttribute('src') ||
+              img.getAttribute('lazy-src');
 
-            if (src) {
+            if (rawSrc) {
               // 1단계: 상대경로 → 절대경로 변환 (origin 기준으로 확실하게 보정)
-              let finalUrl = src;
-              try { finalUrl = new URL(src, originBase).href; }
+              let finalUrl = rawSrc;
+              try { finalUrl = new URL(rawSrc, originBase).href; }
               catch (_) {
-                if (src.startsWith('//')) finalUrl = 'https:' + src;
-                else if (src.startsWith('/')) finalUrl = originBase + src;
+                if (rawSrc.startsWith('//')) finalUrl = 'https:' + rawSrc;
+                else if (rawSrc.startsWith('/')) finalUrl = originBase + rawSrc;
               }
               // 2단계: wsrv.nl 이미지 프록시로 래핑 (핫링크/CORS 완전 우회)
               img.src = 'https://wsrv.nl/?url=' + encodeURIComponent(finalUrl);
@@ -985,8 +1041,51 @@ async function renderDetail() {
           contentHtml = contentEl.innerHTML.trim();
         }
 
+        // 2차 방어선: 셀렉터로 본문을 못 찾았거나 내용이 너무 짧은 경우,
+        // body 내 모든 div를 검사해 "텍스트 길이가 가장 긴 div(최소 500자)"를 자동 선택합니다.
+        // 이렇게 하면 새로운 커뮤니티 구조라도 최소 텍스트는 항상 사용자에게 보여집니다.
+        if (!contentHtml || contentHtml.replace(/\s+/g, '').length < 50) {
+          let bestDiv = null;
+          let bestLen = 0;
+          doc.body?.querySelectorAll('div').forEach(div => {
+            const text = div.innerText || div.textContent || '';
+            const len = text.replace(/\s+/g, '').length;
+            if (len >= 500 && len > bestLen) {
+              bestLen = len;
+              bestDiv = div;
+            }
+          });
+          if (bestDiv) {
+            bestDiv.querySelectorAll('img').forEach(img => {
+              const rawSrc =
+                img.getAttribute('data-src') ||
+                img.getAttribute('data-original') ||
+                img.getAttribute('data-lazy-src') ||
+                img.getAttribute('src') ||
+                img.getAttribute('lazy-src');
+              if (rawSrc) {
+                let finalUrl = rawSrc;
+                try { finalUrl = new URL(rawSrc, originBase).href; }
+                catch (_) {
+                  if (rawSrc.startsWith('//')) finalUrl = 'https:' + rawSrc;
+                  else if (rawSrc.startsWith('/')) finalUrl = originBase + rawSrc;
+                }
+                img.src = 'https://wsrv.nl/?url=' + encodeURIComponent(finalUrl);
+              }
+              img.setAttribute('referrerpolicy', 'no-referrer');
+              img.setAttribute('loading', 'lazy');
+              img.style.maxWidth = '100%';
+              img.style.height = 'auto';
+              img.style.display = 'block';
+              img.style.margin = '10px auto';
+            });
+            bestDiv.querySelectorAll('script, style, iframe').forEach(s => s.remove());
+            contentHtml = bestDiv.innerHTML.trim();
+          }
+        }
+
         // ── OG 메타 태그 Fallback ─────────────────────────────────────────────
-        // contentEl을 전혀 찾지 못하거나 본문이 너무 짧을 경우,
+        // contentEl/스마트 폴백으로도 본문을 확보하지 못하거나 본문이 너무 짧을 경우,
         // OG(Open Graph) 메타 태그의 이미지와 설명으로 대체 렌더링합니다.
         if (!contentHtml || contentHtml.length < 20) {
           contentHtml = `
