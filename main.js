@@ -679,6 +679,21 @@ async function renderHotdealDetail() {
           img.getAttribute('lazy-src');
 
         if (rawSrc) {
+          // ── Base64(data:image...) 예외 처리 ─────────────────────────────────
+          // 일부 쇼핑몰/커뮤니티는 이미지를 data:image;base64 형태로 본문에 직접 삽입합니다.
+          // 이 경우 wsrv.nl 프록시(외부 URL fetch)가 개입하면 오히려 깨질 수 있으므로
+          // 프록시를 태우지 말고 그대로 src에 넣고 다음 이미지로 넘어갑니다.
+          if (rawSrc.startsWith('data:image')) {
+            img.src = rawSrc;
+            img.setAttribute('referrerpolicy', 'no-referrer');
+            img.setAttribute('loading', 'lazy');
+            img.style.maxWidth = '100%';
+            img.style.height = 'auto';
+            img.style.display = 'block';
+            img.style.margin = '10px auto';
+            return;
+          }
+
           // 1단계: 상대경로 → 절대경로 변환
           let finalUrl = rawSrc;
           try { finalUrl = new URL(rawSrc, originBase).href; }
@@ -688,6 +703,10 @@ async function renderHotdealDetail() {
           }
           // 2단계: wsrv.nl 이미지 프록시로 래핑 (핫링크/CORS 완전 우회)
           img.src = 'https://wsrv.nl/?url=' + encodeURIComponent(finalUrl);
+          // ── wsrv.nl 차단 대비 onerror 폴백 ─────────────────────────────────
+          // wsrv.nl 프록시 IP가 차단되면 엑스박스가 뜰 수 있으므로,
+          // 프록시 로딩 실패 시 브라우저가 원본(절대경로)을 직접 요청하도록 강제합니다.
+          img.setAttribute('onerror', `this.onerror=null;this.src=${JSON.stringify(finalUrl)};`);
         }
         // referrerpolicy를 항상 no-referrer로 강제 주입하여
         // 원본 서버에 Referer가 절대 전달되지 않도록 합니다.
@@ -727,6 +746,18 @@ async function renderHotdealDetail() {
             img.getAttribute('src') ||
             img.getAttribute('lazy-src');
           if (rawSrc) {
+            // ── Base64(data:image...) 예외 처리 ───────────────────────────────
+            if (rawSrc.startsWith('data:image')) {
+              img.src = rawSrc;
+              img.setAttribute('referrerpolicy', 'no-referrer');
+              img.setAttribute('loading', 'lazy');
+              img.style.maxWidth = '100%';
+              img.style.height = 'auto';
+              img.style.display = 'block';
+              img.style.margin = '10px auto';
+              return;
+            }
+
             let finalUrl = rawSrc;
             try { finalUrl = new URL(rawSrc, originBase).href; }
             catch (_) {
@@ -734,6 +765,7 @@ async function renderHotdealDetail() {
               else if (rawSrc.startsWith('/')) finalUrl = originBase + rawSrc;
             }
             img.src = 'https://wsrv.nl/?url=' + encodeURIComponent(finalUrl);
+            img.setAttribute('onerror', `this.onerror=null;this.src=${JSON.stringify(finalUrl)};`);
           }
           img.setAttribute('referrerpolicy', 'no-referrer');
           img.setAttribute('loading', 'lazy');
@@ -1017,6 +1049,21 @@ async function renderDetail() {
               img.getAttribute('lazy-src');
 
             if (rawSrc) {
+              // ── Base64(data:image...) 예외 처리 ─────────────────────────────
+              // 일부 쇼핑몰/커뮤니티는 이미지를 data:image;base64 형태로 본문에 직접 삽입합니다.
+              // 이 경우 wsrv.nl 프록시를 태우면 오히려 깨질 수 있으므로
+              // 프록시를 거치지 않고 그대로 src에 할당합니다.
+              if (rawSrc.startsWith('data:image')) {
+                img.src = rawSrc;
+                img.setAttribute('referrerpolicy', 'no-referrer');
+                img.setAttribute('loading', 'lazy');
+                img.style.maxWidth = '100%';
+                img.style.height = 'auto';
+                img.style.display = 'block';
+                img.style.margin = '10px auto';
+                return;
+              }
+
               // 1단계: 상대경로 → 절대경로 변환 (origin 기준으로 확실하게 보정)
               let finalUrl = rawSrc;
               try { finalUrl = new URL(rawSrc, originBase).href; }
@@ -1026,6 +1073,10 @@ async function renderDetail() {
               }
               // 2단계: wsrv.nl 이미지 프록시로 래핑 (핫링크/CORS 완전 우회)
               img.src = 'https://wsrv.nl/?url=' + encodeURIComponent(finalUrl);
+              // ── wsrv.nl 차단 대비 onerror 폴백 ───────────────────────────────
+              // wsrv.nl 프록시 IP가 차단되면 엑스박스가 뜰 수 있으므로,
+              // 프록시 로딩 실패 시 브라우저가 원본(절대경로)을 직접 요청하도록 강제합니다.
+              img.setAttribute('onerror', `this.onerror=null;this.src=${JSON.stringify(finalUrl)};`);
             }
             img.setAttribute('referrerpolicy', 'no-referrer'); // 핫링크 방어 2중 우회
             img.setAttribute('loading', 'lazy');               // 스크롤 시 지연 로드
@@ -1064,6 +1115,18 @@ async function renderDetail() {
                 img.getAttribute('src') ||
                 img.getAttribute('lazy-src');
               if (rawSrc) {
+                // ── Base64(data:image...) 예외 처리 ───────────────────────────
+                if (rawSrc.startsWith('data:image')) {
+                  img.src = rawSrc;
+                  img.setAttribute('referrerpolicy', 'no-referrer');
+                  img.setAttribute('loading', 'lazy');
+                  img.style.maxWidth = '100%';
+                  img.style.height = 'auto';
+                  img.style.display = 'block';
+                  img.style.margin = '10px auto';
+                  return;
+                }
+
                 let finalUrl = rawSrc;
                 try { finalUrl = new URL(rawSrc, originBase).href; }
                 catch (_) {
@@ -1071,6 +1134,7 @@ async function renderDetail() {
                   else if (rawSrc.startsWith('/')) finalUrl = originBase + rawSrc;
                 }
                 img.src = 'https://wsrv.nl/?url=' + encodeURIComponent(finalUrl);
+                img.setAttribute('onerror', `this.onerror=null;this.src=${JSON.stringify(finalUrl)};`);
               }
               img.setAttribute('referrerpolicy', 'no-referrer');
               img.setAttribute('loading', 'lazy');
