@@ -1959,9 +1959,14 @@ function renderCreate(_myToken) {
     return;
   }
 
-  // 핫딜 모음·인기딜·문의 등 뷰 전용(또는 가상) 카테고리는 딜 등록에서 선택 불가
-  const viewOnlyIds = ['all', 'hotdeal', 'popular', 'inquiry'];
-  const selectable = getLeafCategories(CATEGORIES, viewOnlyIds);
+  // 뷰 전용 카테고리는 DB id가 아닌 한글 이름(label/name) 기준으로 제외 (뎁스/pathLabel 로직은 getLeafCategories 그대로)
+  const allLeaves = getLeafCategories(CATEGORIES, []);
+  const forbiddenNames = ['핫딜모음', '핫딜 모음', '인기딜', '문의'];
+  const selectable = allLeaves.filter(c =>
+    !forbiddenNames.some(f =>
+      (c.label && c.label.includes(f)) || c.name === f
+    )
+  );
   const catOptions = selectable.map(s =>
     `<option value="${esc(String(s.id))}">${esc(s.pathLabel || s.label)}</option>`
   ).join('');
@@ -1998,8 +2003,6 @@ function renderCreate(_myToken) {
 }
 
 async function submitPost() {
-  const btn = document.getElementById('btn-submit-post');
-  const originalBtnHtml = btn ? btn.innerHTML : '';
   const spinnerHtml = '<div class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;"></div>';
 
   try {
@@ -2011,11 +2014,6 @@ async function submitPost() {
       showToast('로그인 또는 데이터 연결이 필요합니다');
       showLoginModal();
       return;
-    }
-
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = `${spinnerHtml}등록 중...`;
     }
 
     const titleEl = document.getElementById('p-title');
@@ -2035,6 +2033,12 @@ async function submitPost() {
     if (!title || !cat || !price || !desc) {
       showToast('필수 항목을 모두 입력해 주세요');
       return;
+    }
+
+    const btn = document.getElementById('btn-submit-post');
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `${spinnerHtml}등록 중...`;
     }
 
     const { error } = await sb.from('posts').insert({
@@ -2066,11 +2070,14 @@ async function submitPost() {
     navigateTo('feed');
   } catch (e) {
     console.error('[submitPost]', e);
-    showToast('오류: ' + (e && e.message ? e.message : String(e)));
+    const msg = e && typeof e.message === 'string' ? e.message : String(e);
+    showToast(msg);
   } finally {
-    if (btn && document.body.contains(btn)) {
-      btn.disabled = false;
-      btn.innerHTML = originalBtnHtml;
+    // 성공 후 피드로 이동해도, 실패·검증 실패 후에도 DOM에 버튼이 남아 있으면 무조건 복구 (무한 로딩 방지)
+    const submitBtn = document.getElementById('btn-submit-post');
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '등록 신청';
     }
   }
 }
