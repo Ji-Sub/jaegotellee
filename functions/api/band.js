@@ -1,5 +1,5 @@
 // functions/api/band.js
-// 밴드(band.us) 게시글 URL에서 이미지·본문을 추출하고 AI로 상품 정보를 구조화해 반환
+// 밴드(band.us) 게시글 URL에서 이미지(최대3)·본문을 추출하고 Gemini로 상품 정보를 구조화해 반환
 // 환경변수: GOOGLE_GENERATIVE_AI_API_KEY (Cloudflare Pages → Settings → Environment variables)
 
 export async function onRequest(context) {
@@ -46,19 +46,26 @@ export async function onRequest(context) {
     return json({ error: `네트워크 오류: ${err.message}` }, 500);
   }
 
-  // ── 2. OG 메타 태그 추출 ────────────────────────────────────────────────
-  const ogImage = extractMeta(html, 'og:image');
-  const ogTitle = extractMeta(html, 'og:title') || '';
-
-  if (!ogImage) {
+  // ── 2. 이미지 최대 3개 추출 (OG + __NEXT_DATA__ photo 배열) ─────────────
+  const images = extractImages(html); // 원본 URL 배열 (프록시 미적용)
+  if (images.length === 0) {
     return json({ error: '이미지를 찾을 수 없습니다. 비공개 게시글이거나 지원하지 않는 페이지입니다.' }, 404);
   }
+
+  const ogTitle = extractMeta(html, 'og:title') || '';
 
   // ── 3. 본문 텍스트 추출 ─────────────────────────────────────────────────
   const bodyText = extractBodyText(html);
 
-  // AI 분석 없이도 기본 데이터는 반환
-  const baseResult = { success: true, image_url: ogImage, title: ogTitle, body_text: bodyText, ai: null };
+  // 기본 응답 (AI 없이도 이미지는 반환)
+  const baseResult = {
+    success: true,
+    images,               // 원본 이미지 URL 배열 (클라이언트에서 프록시 붙임)
+    image_url: images[0], // 하위 호환성용 첫 이미지
+    title: ogTitle,
+    body_text: bodyText,
+    ai: null,
+  };
 
   if (!bodyText || bodyText.length < 10) {
     return json({ ...baseResult, ai_skipped: 'body_too_short' });
@@ -70,25 +77,36 @@ export async function onRequest(context) {
     return json({ ...baseResult, ai_skipped: 'GOOGLE_GENERATIVE_AI_API_KEY 환경변수가 설정되지 않았습니다.' });
   }
 
-  const SYSTEM_PROMPT = `당신은 농수산물 직거래 밴드 게시글 분석 전문가입니다.
+  // 뚝형 스타일 프롬프트 ─────────────────────────────────────────────────
+  const SYSTEM_PROMPT = `당신은 한국 농수산물 직거래 밴드 게시글 분석 전문가입니다.
 아래 게시글 텍스트에서 상품 정보를 추출해 반드시 아래 JSON 형식으로만 응답하세요.
 
 {
-  "name": "상품명 (간결하게 30자 이내, 예: 제주 무농약 감귤 5kg)",
-  "price": "가장 낮은 가격 (배송비 제외, 원문 그대로, 예: 35,000원/kg 또는 5만원)",
-  "shipping": "배송비 정보 (예: 무료, 3,000원, 착불, 5만원 이상 무료 등)",
-  "description": "상세 설명 (이모지와 줄바꿈 포함, 400자 이내, 아래 형식 참고)"
+  "name": "최적화 제목 한 줄 (상품명 + 규격/중량 + 배송비 조건을 조합, 예: [무료배송] 제주 황금향 5kg, [항공직송] 무지개 망고 4kg (착불))",
+  "price": "최저 가격 숫자만 (배송비 제외, 콤마 포함, 원 단위 표시, 예: 35,000원 또는 3,500원/kg)",
+  "shipping": "배송비 정보 (예: 무료, 3,000원, 착불, 5만원 이상 무료)",
+  "description": "반드시 첫 줄에 name과 동일한 제목을 쓰고, 빈 줄 한 줄 후 아래 형식으로 상세 내용 작성 (400자 이내)"
 }
 
-description 형식 예시:
-🥬 상품명: 제주 무농약 감귤
-📦 규격: 5kg / 10kg 박스
+description 형식 예시 (이 형식을 반드시 따르세요):
+[무료배송] 제주 황금향 5kg
+
+🍊 상품: 제주 황금향
+📦 규격: 5kg / 10kg 선택 가능
 💰 가격: 35,000원 (5kg 기준)
-🚚 배송비: 3,000원 (5만원 이상 무료)
+🚚 배송: 무료 (전국)
 📝 특징:
-- 무농약 인증 (인증번호: 제주-2024-001)
+- 당도 13브릭스 이상 보장
 - 당일 수확 당일 발송
-📞 주문/문의: 댓글 또는 쪽지
+- 산지 직송 (제주 서귀포)
+📞 주문/문의: 댓글 또는 쪽지로 연락주세요
+
+name 작성 규칙:
+- 특이사항(항공직송/유기농/무농약/국내산 등)이 있으면 앞에 [태그] 형태로 붙이기
+- 중량/규격은 반드시 포함
+- 무료배송이면 (무료배송) 또는 [무료배송] 형태로 표시
+- 착불이면 끝에 (착불) 표시
+- 30자를 넘지 않도록 간결하게
 
 JSON만 응답하고 다른 텍스트는 절대 포함하지 마세요.`;
 
@@ -106,7 +124,7 @@ JSON만 응답하고 다른 텍스트는 절대 포함하지 마세요.`;
         generationConfig: {
           responseMimeType: 'application/json',
           temperature: 0.2,
-          maxOutputTokens: 600,
+          maxOutputTokens: 700,
         },
       }),
     });
@@ -120,12 +138,12 @@ JSON만 응답하고 다른 텍스트는 절대 포함하지 마세요.`;
     const raw = aiData.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!raw) return json({ ...baseResult, ai_skipped: 'AI 응답이 비어있습니다.' });
 
-    let parsed;
-    try { parsed = JSON.parse(raw); } catch (_) {
+    let aiParsed;
+    try { aiParsed = JSON.parse(raw); } catch (_) {
       return json({ ...baseResult, ai_skipped: 'AI 응답 파싱 실패', ai_raw: raw });
     }
 
-    return json({ ...baseResult, ai: parsed });
+    return json({ ...baseResult, ai: aiParsed });
   } catch (err) {
     return json({ ...baseResult, ai_skipped: `AI 호출 오류: ${err.message}` });
   }
@@ -138,6 +156,59 @@ function extractMeta(html, property) {
   const re2 = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+property=["']${property}["']`, 'i');
   const m = html.match(re1) || html.match(re2);
   return m ? m[1] : null;
+}
+
+// 밴드 페이지에서 이미지 URL 최대 3개 추출
+function extractImages(html) {
+  const seen = new Set();
+  const results = [];
+
+  function addImage(url) {
+    if (!url || seen.has(url) || results.length >= 3) return;
+    if (!/^https?:\/\/.+/i.test(url)) return;
+    // 아이콘·프로필 사진은 제외 (너무 작거나 profile/avatar 경로)
+    if (/profile|avatar|icon|logo|badge/i.test(url)) return;
+    seen.add(url);
+    results.push(url);
+  }
+
+  // 우선순위 1: __NEXT_DATA__ JSON에서 photo 배열 탐색
+  const ndMatch = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]+?)<\/script>/i);
+  if (ndMatch) {
+    try {
+      const nd = JSON.parse(ndMatch[1]);
+      collectPhotoUrls(nd, addImage, 0);
+    } catch (_) { /* fall through */ }
+  }
+
+  // 우선순위 2: og:image 메타 태그
+  const ogImg = extractMeta(html, 'og:image');
+  if (ogImg) addImage(ogImg);
+
+  return results;
+}
+
+// __NEXT_DATA__ 트리에서 이미지 URL 수집 (BFS, 이미지 관련 키 우선)
+function collectPhotoUrls(obj, addImage, depth) {
+  if (depth > 12 || !obj) return;
+  if (typeof obj === 'string') {
+    if (/^https?:\/\/.+\.(jpg|jpeg|png|webp|gif)(\?[^"']*)?$/i.test(obj)) addImage(obj);
+    return;
+  }
+  if (Array.isArray(obj)) {
+    for (const item of obj) collectPhotoUrls(item, addImage, depth + 1);
+    return;
+  }
+  if (typeof obj === 'object') {
+    // 이미지 URL 관련 키 먼저 처리
+    const IMG_KEYS = ['url', 'photo_url', 'thumbnail_url', 'image_url', 'src', 'original_url', 'large_url'];
+    for (const key of IMG_KEYS) {
+      if (typeof obj[key] === 'string') collectPhotoUrls(obj[key], addImage, depth + 1);
+    }
+    for (const [key, val] of Object.entries(obj)) {
+      if (!IMG_KEYS.includes(key)) collectPhotoUrls(val, addImage, depth + 1);
+    }
+  }
 }
 
 function extractBodyText(html) {
@@ -167,7 +238,7 @@ function extractBodyText(html) {
   return '';
 }
 
-// __NEXT_DATA__ JSON 트리에서 한국어 본문이 담긴 필드를 BFS 탐색
+// __NEXT_DATA__ JSON 트리에서 한국어 본문이 담긴 필드를 DFS 탐색
 function findKoreanBody(obj, depth) {
   if (depth > 12 || !obj || typeof obj !== 'object') return null;
   const BODY_KEYS = new Set(['body', 'content', 'text', 'caption', 'description', 'message', 'postBody', 'post_body']);
@@ -180,7 +251,7 @@ function findKoreanBody(obj, depth) {
       }
     } else if (val && typeof val === 'object') {
       const found = findKoreanBody(val, depth + 1);
-      if (found) return found; // 깊이 우선
+      if (found) return found;
     }
   }
 

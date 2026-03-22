@@ -2138,7 +2138,11 @@ function renderCreate(_myToken) {
       <div class="form-group"><label class="form-label">카테고리 *</label><select class="form-input" id="p-cat">${catOptions}</select></div>
       <div class="form-group"><label class="form-label">가격 *</label><input class="form-input" id="p-price" type="text" placeholder="예: 35,000원/kg"></div>
       <div class="form-group"><label class="form-label">상세 설명 *</label><textarea class="form-input" id="p-desc" style="min-height:130px;" placeholder="상품 상태, 수량, 배송 방법 등을 자세히 적어주세요."></textarea></div>
-      <div class="form-group"><label class="form-label">이미지 URL</label><input class="form-input" id="p-img" type="url" placeholder="https://..."></div>
+      <div class="form-group">
+        <label class="form-label">이미지 URL</label>
+        <input class="form-input" id="p-img" type="url" placeholder="https://...">
+        <div id="p-img-picker" style="display:none;gap:8px;flex-wrap:wrap;margin-top:10px;"></div>
+      </div>
       <div class="form-group"><label class="form-label">구매 링크</label><input class="form-input" id="p-link" type="url" placeholder="https://..."></div>
       <button type="button" id="btn-submit-post" class="btn btn-primary btn-full" onclick="submitPost()">등록 신청</button>
     </div>`;
@@ -2246,7 +2250,7 @@ async function submitPost() {
 window.submitPost = submitPost;
 
 // ─────────────────────────────────────────────
-// BAND 게시글 자동 불러오기 + AI 분석
+// BAND 게시글 자동 불러오기 + AI 분석 (뚝형 스타일)
 // ─────────────────────────────────────────────
 window.fetchBandPost = async function () {
   const bandUrlEl = document.getElementById('p-band-url');
@@ -2270,30 +2274,62 @@ window.fetchBandPost = async function () {
       return;
     }
 
-    // 이미지 → 프록시 URL로 변환 저장
-    const proxiedImageUrl = `/api/imgproxy?url=${encodeURIComponent(data.image_url)}`;
-    const imgEl   = document.getElementById('p-img');
-    const linkEl  = document.getElementById('p-link');
-    const titleEl = document.getElementById('p-title');
-    const priceEl = document.getElementById('p-price');
-    const descEl  = document.getElementById('p-desc');
+    // ── 이미지 처리: 최대 3개, 프록시 URL로 변환 ─────────────────────────
+    const rawImages = data.images && data.images.length > 0
+      ? data.images
+      : (data.image_url ? [data.image_url] : []);
+    const proxiedImages = rawImages.map(u => `/api/imgproxy?url=${encodeURIComponent(u)}`);
 
-    if (imgEl)  imgEl.value  = proxiedImageUrl;
-    if (linkEl  && !linkEl.value.trim())  linkEl.value  = bandUrl;
+    const imgEl    = document.getElementById('p-img');
+    const pickerEl = document.getElementById('p-img-picker');
+    const linkEl   = document.getElementById('p-link');
+    const titleEl  = document.getElementById('p-title');
+    const priceEl  = document.getElementById('p-price');
+    const descEl   = document.getElementById('p-desc');
 
+    // 첫 번째 이미지를 기본 선택
+    if (imgEl && proxiedImages.length > 0) imgEl.value = proxiedImages[0];
+
+    // 이미지 2개 이상이면 썸네일 피커 표시
+    if (pickerEl) {
+      if (proxiedImages.length > 1) {
+        pickerEl.style.display = 'flex';
+        pickerEl.innerHTML = proxiedImages.map((url, i) => `
+          <img src="${url}"
+            data-url="${url}"
+            style="width:70px;height:70px;object-fit:cover;border-radius:8px;cursor:pointer;
+                   border:3px solid ${i === 0 ? 'var(--primary, #2563eb)' : '#ddd'};
+                   transition:border-color 0.15s;"
+            loading="lazy"
+            title="이미지 ${i + 1} 선택"
+            onclick="
+              document.getElementById('p-img').value=this.dataset.url;
+              document.getElementById('p-img-picker').querySelectorAll('img')
+                .forEach(el => el.style.borderColor='#ddd');
+              this.style.borderColor='var(--primary, #2563eb)';
+            ">
+        `).join('');
+      } else {
+        pickerEl.style.display = 'none';
+        pickerEl.innerHTML = '';
+      }
+    }
+
+    if (linkEl && !linkEl.value.trim()) linkEl.value = bandUrl;
+
+    // ── AI 분석 결과로 모든 폼 필드 채우기 ──────────────────────────────
     if (data.ai) {
-      // AI 분석 결과로 모든 필드 자동 채우기
-      if (btn) btn.innerHTML = `${sp}AI 분석 완료!`;
       if (titleEl && data.ai.name)        titleEl.value = data.ai.name;
       if (priceEl && data.ai.price)       priceEl.value = data.ai.price;
       if (descEl  && data.ai.description) descEl.value  = data.ai.description;
-      showToast('✅ AI가 상품 정보를 자동으로 채웠습니다! 내용을 확인 후 등록하세요.');
+      const imgCount = proxiedImages.length;
+      showToast(`✅ AI 분석 완료! 이미지 ${imgCount}개, 내용을 확인 후 등록하세요.`);
     } else {
       // AI 없이 기본 정보만 채우기
       if (titleEl && !titleEl.value.trim() && data.title) titleEl.value = data.title;
       const skipped = data.ai_skipped || '';
       if (skipped.includes('GOOGLE_GENERATIVE_AI_API_KEY')) {
-        showToast('✅ 이미지를 불러왔습니다. (AI 분석: GOOGLE_GENERATIVE_AI_API_KEY 미설정)');
+        showToast('✅ 이미지를 불러왔습니다. (AI: GOOGLE_GENERATIVE_AI_API_KEY 미설정)');
       } else {
         showToast('✅ 이미지를 불러왔습니다. 나머지 항목을 직접 입력해 주세요.');
       }
