@@ -1,6 +1,6 @@
 // functions/api/band.js
 // 밴드(band.us) 게시글 URL에서 이미지·본문을 추출하고 AI로 상품 정보를 구조화해 반환
-// 환경변수: OPENAI_API_KEY (Cloudflare Pages → Settings → Environment variables)
+// 환경변수: GOOGLE_GENERATIVE_AI_API_KEY (Cloudflare Pages → Settings → Environment variables)
 
 export async function onRequest(context) {
   const requestUrl = new URL(context.request.url);
@@ -64,25 +64,13 @@ export async function onRequest(context) {
     return json({ ...baseResult, ai_skipped: 'body_too_short' });
   }
 
-  // ── 4. OpenAI API로 상품 정보 구조화 ────────────────────────────────────
-  const openaiKey = context.env?.OPENAI_API_KEY;
-  if (!openaiKey) {
-    return json({ ...baseResult, ai_skipped: 'OPENAI_API_KEY 환경변수가 설정되지 않았습니다.' });
+  // ── 4. Gemini API로 상품 정보 구조화 ────────────────────────────────────
+  const geminiKey = context.env?.GOOGLE_GENERATIVE_AI_API_KEY;
+  if (!geminiKey) {
+    return json({ ...baseResult, ai_skipped: 'GOOGLE_GENERATIVE_AI_API_KEY 환경변수가 설정되지 않았습니다.' });
   }
 
-  try {
-    const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openaiKey}`,
-      },
-      body: JSON.stringify({
-        model: 'gpt-4o-mini',
-        messages: [
-          {
-            role: 'system',
-            content: `당신은 농수산물 직거래 밴드 게시글 분석 전문가입니다.
+  const SYSTEM_PROMPT = `당신은 농수산물 직거래 밴드 게시글 분석 전문가입니다.
 아래 게시글 텍스트에서 상품 정보를 추출해 반드시 아래 JSON 형식으로만 응답하세요.
 
 {
@@ -102,26 +90,34 @@ description 형식 예시:
 - 당일 수확 당일 발송
 📞 주문/문의: 댓글 또는 쪽지
 
-JSON만 응답하고 다른 텍스트는 절대 포함하지 마세요.`,
-          },
-          {
-            role: 'user',
-            content: bodyText.slice(0, 2000), // 토큰 절약
-          },
+JSON만 응답하고 다른 텍스트는 절대 포함하지 마세요.`;
+
+  try {
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`;
+
+    const aiRes = await fetch(geminiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        contents: [
+          { role: 'user', parts: [{ text: bodyText.slice(0, 2000) }] },
         ],
-        response_format: { type: 'json_object' },
-        max_tokens: 600,
-        temperature: 0.2,
+        generationConfig: {
+          responseMimeType: 'application/json',
+          temperature: 0.2,
+          maxOutputTokens: 600,
+        },
       }),
     });
 
     if (!aiRes.ok) {
       const errText = await aiRes.text().catch(() => '');
-      return json({ ...baseResult, ai_skipped: `OpenAI 오류 (${aiRes.status}): ${errText.slice(0, 200)}` });
+      return json({ ...baseResult, ai_skipped: `Gemini 오류 (${aiRes.status}): ${errText.slice(0, 200)}` });
     }
 
     const aiData = await aiRes.json();
-    const raw = aiData.choices?.[0]?.message?.content;
+    const raw = aiData.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!raw) return json({ ...baseResult, ai_skipped: 'AI 응답이 비어있습니다.' });
 
     let parsed;

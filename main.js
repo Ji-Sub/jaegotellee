@@ -2292,8 +2292,8 @@ window.fetchBandPost = async function () {
       // AI 없이 기본 정보만 채우기
       if (titleEl && !titleEl.value.trim() && data.title) titleEl.value = data.title;
       const skipped = data.ai_skipped || '';
-      if (skipped.includes('OPENAI_API_KEY')) {
-        showToast('✅ 이미지를 불러왔습니다. (AI 분석: OPENAI_API_KEY 미설정)');
+      if (skipped.includes('GOOGLE_GENERATIVE_AI_API_KEY')) {
+        showToast('✅ 이미지를 불러왔습니다. (AI 분석: GOOGLE_GENERATIVE_AI_API_KEY 미설정)');
       } else {
         showToast('✅ 이미지를 불러왔습니다. 나머지 항목을 직접 입력해 주세요.');
       }
