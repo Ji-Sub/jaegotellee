@@ -278,6 +278,12 @@ a {
   min-height: calc(100vh - var(--nav-h));
 }
 
+/* 관리자 카테고리 추가 행: <form>으로 감쌀 때 브라우저 기본 여백 제거 */
+form.admin-category-form {
+  margin: 0;
+  box-sizing: border-box;
+}
+
 /* ── FEED ── */
 .feed-header {
   display: flex;
@@ -375,6 +381,7 @@ a {
   font-size: 12px;
   color: var(--text-sub);
   margin-bottom: 10px;
+  white-space: pre-wrap;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;

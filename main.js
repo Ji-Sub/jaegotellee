@@ -119,20 +119,16 @@ try {
 // UTILS
 // ─────────────────────────────────────────────
 function formatPrice(val) {
-  if (!val) return '';
-  let str = String(val).trim();
-  str = str.replace(/,/g, ''); // remove commas if any exist
-
-  const match = str.match(/(\d+)/);
-  if (match) {
-    const num = Number(match[1]);
-    str = str.replace(match[1], num.toLocaleString('ko-KR'));
+  if (!val && val !== 0) return '';
+  const str = String(val).trim();
+  if (!str) return '';
+  // 숫자·콤마·점만으로 이루어진 순수 숫자 문자열이면 천단위 콤마 + '원'
+  if (/^[\d,.]+$/.test(str)) {
+    const num = Number(str.replace(/,/g, ''));
+    if (!isNaN(num)) return num.toLocaleString('ko-KR') + '원';
   }
-
-  if (!str.includes('원')) {
-    str += '원';
-  }
-  return str;
+  // 혼합 문자열(한글·괄호·영문 등)은 원문 그대로, '원'이 없으면 '원' 추가
+  return str.includes('원') ? str : str + '원';
 }
 
 function esc(s) {
@@ -149,6 +145,44 @@ function withTimeout(promise, ms = 12000, msg = '요청 시간이 초과되었�
     timer = setTimeout(() => reject(new Error(msg)), ms);
   });
   return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Supabase Cold Start 대비 지능형 재시도 래퍼.
+ * 타임아웃 에러가 발생하면 2초 대기 후 최대 2회 자동 재시도한다.
+ * @param {Function} makeFn  - () => Supabase insert promise 를 반환하는 팩토리 함수
+ * @param {Object}   opts
+ *   @param {Element|null} opts.btn       - 버튼 DOM (없으면 null)
+ *   @param {string}       opts.sp        - 스피너 HTML 문자열
+ *   @param {string}       opts.baseLabel - 최초 로딩 텍스트 (예: '등록 중...')
+ *   @param {number}       [opts.ms=15000]- 1회 시도 타임아웃(ms)
+ */
+async function retryInsert(makeFn, { btn, sp, baseLabel = '등록 중...', ms = 15000 } = {}) {
+  const MAX_RETRIES = 2;
+  const isTimeoutErr = (e) => {
+    const msg = (e?.message || String(e)).toLowerCase();
+    return msg.includes('시간이 초과') || msg.includes('timeout');
+  };
+
+  let lastErr;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    if (attempt > 0) {
+      // 재시도 전 2초 대기 + 버튼 텍스트 갱신
+      if (btn) btn.innerHTML = `${sp}재시도 중 (${attempt}/${MAX_RETRIES})...`;
+      await new Promise(r => setTimeout(r, 2000));
+    }
+    try {
+      const { error } = await withTimeout(makeFn(), ms);
+      if (error) throw error;
+      return; // 성공
+    } catch (e) {
+      lastErr = e;
+      // 타임아웃이 아닌 에러거나 마지막 시도면 즉시 상위로 throw
+      if (!isTimeoutErr(e) || attempt === MAX_RETRIES) throw e;
+      console.warn(`[retryInsert] 타임아웃, ${attempt + 1}/${MAX_RETRIES + 1} 시도 후 재시도 예정`, e.message);
+    }
+  }
+  throw lastErr;
 }
 
 /** 공백·띄어쓰기 제거 (딜 등록 카테고리 필터 등) */
@@ -317,20 +351,20 @@ async function addComment(postId, content) {
 
 async function fetchPendingSellers() {
   if (S.isDemo) return [{ id: 'demo', user_id: 'u1', status: 'pending', created_at: new Date().toISOString(), users: { email: 'demo_seller@test.com' } }];
-  const { data } = await withTimeout(sb.from('seller_applications').select('*, users(email)').eq('status', 'pending').order('created_at', { ascending: false }));
+  const { data } = await withTimeout(sb.from('seller_applications').select('*, users(email)').eq('status', 'pending').order('created_at', { ascending: false }), 25000);
   return data || [];
 }
 
 async function fetchPendingPosts() {
   if (S.isDemo) return [];
-  const { data, error } = await withTimeout(sb.from('posts').select('*').eq('approved', false).order('created_at', { ascending: false }));
+  const { data, error } = await withTimeout(sb.from('posts').select('*').eq('approved', false).order('created_at', { ascending: false }), 25000);
   if (error) { showToast('대기글 조회 오류: ' + error.message); return []; }
   return data || [];
 }
 
 async function fetchAllPostsAdmin() {
   if (S.isDemo) return DEMO_POSTS;
-  const { data, error } = await withTimeout(sb.from('posts').select('*').order('created_at', { ascending: false }));
+  const { data, error } = await withTimeout(sb.from('posts').select('*').order('created_at', { ascending: false }), 25000);
   if (error) { showToast('전체 게시글 불러오기 오류: ' + error.message); return []; }
   return data || [];
 }
@@ -913,7 +947,7 @@ async function renderHotdealDetail(myToken) {
         <h1 class="detail-title">${esc(title)}</h1>
         <div class="detail-price">${esc(formatPrice(price))}</div>
         <div class="comments-section" style="padding-top:20px; border-bottom: 1px solid var(--border-color); margin-bottom: 30px; padding-bottom: 30px;">
-          <div class="detail-desc" style="white-space:normal; overflow:hidden; width:100%; max-width:100%;">
+          <div class="detail-desc" style="white-space:pre-wrap; overflow:hidden; width:100%; max-width:100%;">
             ${contentHtml}
           </div>
         </div>
@@ -1066,7 +1100,7 @@ function renderInquiryListHtml(posts) {
 
 function cardHtml(p) {
   const img = p.image_url
-    ? `<img src="${esc(p.image_url)}" alt="${esc(p.title)}" class="card-img" loading="lazy">`
+    ? `<img src="https://wsrv.nl/?url=${encodeURIComponent(p.image_url)}" alt="${esc(p.title)}" class="card-img" loading="lazy" referrerpolicy="no-referrer">`
     : `<div class="card-placeholder">${getCatEmoji(p.category)}</div>`;
   return `
     <div class="post-card" data-navigate="detail" data-param="${p.id}">
@@ -1348,7 +1382,7 @@ async function renderDetail(myToken) {
       </div>
 
       <!-- 실시간 파싱된 본문 (또는 DB description fallback) -->
-      <div class="detail-desc" style="white-space:normal; overflow:hidden; width:100%; max-width:100%;">
+      <div class="detail-desc" style="white-space:pre-wrap; overflow:hidden; width:100%; max-width:100%;">
         ${contentHtml}
       </div>
 
@@ -1539,7 +1573,7 @@ async function renderAdminTab(myToken) {
       if (S.renderToken !== myToken) return;
       body.innerHTML = `<div style="margin-bottom: 20px; display:flex; justify-content: flex-end;"><button id="btn-deep-scrape" class="btn btn-primary" type="button">🔍 핫딜집 딥크롤링 실행</button></div>${data.length === 0 ? `<div class="empty-state" ><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3></div>` : `<table class="admin-table"><thead><tr><th>제목</th><th>카테고리</th><th>상태</th><th>조회</th><th>액션</th></tr></thead><tbody>${data.map(p => `<tr><td>${esc(p.title)}</td><td><select class="form-input" style="width:140px; padding:4px;" onchange="updatePostCategory('${p.id}', this.value)">${getCategoryOptionsHtml(p.category)}</select></td><td><span class="badge ${p.approved ? 'badge-approved' : 'badge-pending'}">${p.approved ? '승인됨' : '대기중'}</span></td><td>${p.views || 0}</td><td><div class="btn-row"><button class="btn btn-danger btn-sm" onclick="deletePost('${p.id}')">삭제</button></div></td></tr>`).join('')}</table>`}`;
     } else if (S.adminTab === 'categories') {
-      const { data } = await sb.from('categories').select('*').order('sort_order', { ascending: true });
+      const { data } = await withTimeout(sb.from('categories').select('*').order('sort_order', { ascending: true }), 25000);
       if (S.renderToken !== myToken) return;
       const rawList = data || [];
       const mapById = {}; rawList.forEach(c => { mapById[c.id] = { ...c, subs: [] }; });
@@ -1553,8 +1587,8 @@ async function renderAdminTab(myToken) {
   } catch (e) {
     console.error('[renderAdminTab 에러]', e);
     if (S.renderToken !== myToken) return;
-    // 🔥 [수정됨] 무한 스피너 대신 에러 메시지로 덮어쓰기
-    body.innerHTML = `<div class="empty-state"><div class="empty-emoji">❌</div><h3>데이터를 불러오지 못했습니다</h3><p>${esc(e.message)}</p></div>`;
+    // 🔥 [수정됨] 무한 스피너 대신 에러 메시지 + 재시도 버튼으로 덮어쓰기
+    body.innerHTML = `<div class="empty-state"><div class="empty-emoji">❌</div><h3>데이터를 불러오지 못했습니다</h3><p>${esc(e?.message || String(e))}</p><button class="btn btn-primary" style="margin-top:16px;" onclick="switchTab('${S.adminTab}')">다시 시도</button></div>`;
   } finally {
     // admin-body 내 스피너 직접 제거 (renderToken이 일치할 때만)
     if (S.renderToken === myToken) {
@@ -1884,11 +1918,42 @@ async function submitApply() {
       btn.disabled = true;
       btn.innerHTML = `${sp}신청 중...`;
     }
-    const { error } = await withTimeout(sb.from('seller_applications').insert({ user_id: S.user.id, status: 'pending' }), 15000);
-    if (error) throw error;
+
+    // Supabase JS 클라이언트 auth lock 우회 — 직접 REST API 호출
+    // Supabase JS auth lock 완전 우회 — localStorage에서 직접 토큰 읽기
+    const rawSession = localStorage.getItem('sb-ohjmvkmuhuoiuguetmyp-auth-token');
+    const accessToken = rawSession ? JSON.parse(rawSession)?.access_token : null;
+    if (!accessToken) throw new Error('세션이 만료되었습니다. 다시 로그인해 주세요.');
+
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), 60000);
+    let res;
+    try {
+      res = await fetch(`${SUPABASE_URL}/rest/v1/seller_applications`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${accessToken}`,
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({ user_id: S.user.id, status: 'pending' }),
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(abortTimer);
+    }
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => res.statusText);
+      throw new Error(`DB 저장 실패 (${res.status}): ${errText}`);
+    }
+
     showToast('신청이 접수되었습니다. 검토 후 승인됩니다.');
     navigateTo('feed');
   } catch (e) {
+    console.error('[submitApply 에러]');
+    console.dir(e);
     showToast('오류: ' + (e?.message || String(e)));
   } finally {
     const b = document.getElementById('btn-submit-apply');
@@ -1951,23 +2016,51 @@ async function submitInquiry() {
       btn.innerHTML = `${sp}등록 중...`;
     }
 
-    const post = {
-      user_id: S.user.id,
-      title,
-      description: desc,
-      category: 'inquiry',
-      price: null,
-      views: 0,
-      comment_count: 0,
-      approved: true,
-      is_hot: false
-    };
+    // Supabase JS 클라이언트 auth lock 우회 — 직접 REST API 호출
+    // Supabase JS auth lock 완전 우회 — localStorage에서 직접 토큰 읽기
+    const rawSession = localStorage.getItem('sb-ohjmvkmuhuoiuguetmyp-auth-token');
+    const accessToken = rawSession ? JSON.parse(rawSession)?.access_token : null;
+    if (!accessToken) throw new Error('세션이 만료되었습니다. 다시 로그인해 주세요.');
 
-    const { error } = await withTimeout(sb.from('posts').insert(post), 15000);
-    if (error) throw error;
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), 60000);
+    let res;
+    try {
+      res = await fetch(`${SUPABASE_URL}/rest/v1/posts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${accessToken}`,
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify({
+          user_id: S.user.id,
+          title: String(title),
+          description: String(desc),
+          category: 'inquiry',
+          price: null,
+          views: 0,
+          comment_count: 0,
+          approved: true,
+          is_hot: false
+        }),
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(abortTimer);
+    }
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => res.statusText);
+      throw new Error(`DB 저장 실패 (${res.status}): ${errText}`);
+    }
+
     showToast('문의가 등록되었습니다');
     selectCat('inquiry');
   } catch (e) {
+    console.error('[submitInquiry 에러]');
+    console.dir(e);
     showToast('오류: ' + (e?.message || String(e)));
   } finally {
     const b = document.getElementById('btn-submit-inquiry');
@@ -2073,18 +2166,48 @@ async function submitPost() {
       btn.innerHTML = `${spinnerHtml}등록 중...`;
     }
 
-    // 🔥 [수정됨] Supabase 데이터 타입 오류 방지 (가격에서 숫자만 추출)
-    const numPrice = parseInt(price.replace(/[^0-9]/g, ''), 10) || 0;
+    // Supabase JS 클라이언트 auth lock 우회 — 직접 REST API 호출
+    // Supabase JS auth lock 완전 우회 — localStorage에서 직접 토큰 읽기
+    const rawSession = localStorage.getItem('sb-ohjmvkmuhuoiuguetmyp-auth-token');
+    const accessToken = rawSession ? JSON.parse(rawSession)?.access_token : null;
+    if (!accessToken) throw new Error('세션이 만료되었습니다. 다시 로그인해 주세요.');
 
-    const { error } = await withTimeout(sb.from('posts').insert({
-      title, category: cat, price: numPrice, description: desc,
-      image_url, purchase_link, is_hot: false, approved: false,
-      views: 0, comment_count: 0, user_id: S.user.id
-    }), 15000);
+    const insertPayload = {
+      title: String(title),
+      category: String(cat),
+      price: String(price),
+      description: String(desc),
+      image_url,
+      purchase_link,
+      is_hot: false,
+      approved: false,
+      views: 0,
+      comment_count: 0,
+      user_id: S.user.id
+    };
 
-    if (error) {
-      console.error('[submitPost] Supabase insert 실패', error);
-      throw error;
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), 60000);
+    let res;
+    try {
+      res = await fetch(`${SUPABASE_URL}/rest/v1/posts`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${accessToken}`,
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify(insertPayload),
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(abortTimer);
+    }
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => res.statusText);
+      throw new Error(`DB 저장 실패 (${res.status}): ${errText}`);
     }
 
     showToast('등록 신청 완료! 관리자 승인 후 공개됩니다.');
@@ -2097,11 +2220,11 @@ async function submitPost() {
 
     navigateTo('feed');
   } catch (e) {
-    console.error('[submitPost 에러]', e);
+    console.error('[submitPost 에러]');
+    console.dir(e);
     const msg = e && typeof e.message === 'string' ? e.message : String(e);
     showToast('오류 발생: ' + msg);
   } finally {
-    // 🔥 [수정됨] 무조건 버튼 원래 상태로 되돌리기 (무한로딩 완벽 차단)
     if (btn) {
       btn.disabled = false;
       btn.innerHTML = '등록 신청';
@@ -2230,21 +2353,34 @@ async function modalSignup() {
 // INIT
 // ─────────────────────────────────────────────
 async function init() {
-  try {
-    await loadCategories();
-  } catch (e) {
-    console.error('[init] loadCategories', e);
-    showToast(e?.message || '카테고리를 불러오지 못했습니다');
+  // 카테고리 로딩과 세션 확인을 병렬 실행 — 순차 대기 제거로 초기 렌더링 지연 단축
+  const sessionResult = await Promise.allSettled([
+    loadCategories(),
+    sb ? sb.auth.getSession() : Promise.resolve(null),
+  ]);
+
+  // 카테고리 로딩 실패 처리
+  if (sessionResult[0].status === 'rejected') {
+    console.error('[init] loadCategories', sessionResult[0].reason);
+    showToast(sessionResult[0].reason?.message || '카테고리를 불러오지 못했습니다');
   }
+
+  // 세션 확인 결과 처리
   if (sb) {
-    try {
-      const { data: sessionData } = await sb.auth.getSession();
-      const session = sessionData?.session ?? null;
-      if (session) { S.user = session.user; await loadRole(); }
-    } catch (e) {
-      console.error('[init] getSession', e);
-      showToast(e?.message || '세션을 확인하지 못했습니다');
+    if (sessionResult[1].status === 'fulfilled' && sessionResult[1].value) {
+      try {
+        const { data: sessionData } = sessionResult[1].value;
+        const session = sessionData?.session ?? null;
+        if (session) { S.user = session.user; await loadRole(); }
+      } catch (e) {
+        console.error('[init] getSession parse', e);
+        showToast(e?.message || '세션을 확인하지 못했습니다');
+      }
+    } else if (sessionResult[1].status === 'rejected') {
+      console.error('[init] getSession', sessionResult[1].reason);
+      showToast(sessionResult[1].reason?.message || '세션을 확인하지 못했습니다');
     }
+
     sb.auth.onAuthStateChange(async (_event, session) => {
       try {
         S.user = session?.user || null;
@@ -2255,6 +2391,7 @@ async function init() {
       }
     });
   }
+
   window.addEventListener('hashchange', handleRoute);
   handleRoute();
 }
