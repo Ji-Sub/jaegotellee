@@ -2246,42 +2246,58 @@ async function submitPost() {
 window.submitPost = submitPost;
 
 // ─────────────────────────────────────────────
-// BAND 게시글 자동 불러오기
+// BAND 게시글 자동 불러오기 + AI 분석
 // ─────────────────────────────────────────────
 window.fetchBandPost = async function () {
   const bandUrlEl = document.getElementById('p-band-url');
-  const btn = document.getElementById('btn-fetch-band');
-  const bandUrl = bandUrlEl ? bandUrlEl.value.trim() : '';
+  const btn       = document.getElementById('btn-fetch-band');
+  const bandUrl   = bandUrlEl ? bandUrlEl.value.trim() : '';
 
   if (!bandUrl) { showToast('밴드 게시글 링크를 입력해 주세요'); return; }
   if (!bandUrl.includes('band.us')) { showToast('band.us 링크만 지원합니다'); return; }
 
-  const spinnerHtml = '<div class="spinner" style="width:13px;height:13px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></div>';
+  const sp = '<div class="spinner" style="width:13px;height:13px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></div>';
   const originalHtml = btn ? btn.innerHTML : '자동 불러오기';
 
   try {
-    if (btn) { btn.disabled = true; btn.innerHTML = `${spinnerHtml}불러오는 중...`; }
+    if (btn) { btn.disabled = true; btn.innerHTML = `${sp}페이지 분석 중...`; }
 
-    const res = await fetch(`/api/band?url=${encodeURIComponent(bandUrl)}`);
+    const res  = await fetch(`/api/band?url=${encodeURIComponent(bandUrl)}`);
     const data = await res.json();
 
     if (!res.ok || !data.success) {
-      showToast('이미지를 찾을 수 없습니다: ' + (data.error || '알 수 없는 오류'));
+      showToast('불러오기 실패: ' + (data.error || '알 수 없는 오류'));
       return;
     }
 
-    // 이미지 URL 앞에 우리 프록시를 자동으로 붙임 (네이버 핫링크 차단 우회)
+    // 이미지 → 프록시 URL로 변환 저장
     const proxiedImageUrl = `/api/imgproxy?url=${encodeURIComponent(data.image_url)}`;
-
-    const imgEl  = document.getElementById('p-img');
-    const linkEl = document.getElementById('p-link');
+    const imgEl   = document.getElementById('p-img');
+    const linkEl  = document.getElementById('p-link');
     const titleEl = document.getElementById('p-title');
+    const priceEl = document.getElementById('p-price');
+    const descEl  = document.getElementById('p-desc');
 
-    if (imgEl) imgEl.value = proxiedImageUrl;
-    if (linkEl && !linkEl.value.trim()) linkEl.value = bandUrl;
-    if (titleEl && !titleEl.value.trim() && data.title) titleEl.value = data.title;
+    if (imgEl)  imgEl.value  = proxiedImageUrl;
+    if (linkEl  && !linkEl.value.trim())  linkEl.value  = bandUrl;
 
-    showToast('✅ 이미지를 자동으로 불러왔습니다!');
+    if (data.ai) {
+      // AI 분석 결과로 모든 필드 자동 채우기
+      if (btn) btn.innerHTML = `${sp}AI 분석 완료!`;
+      if (titleEl && data.ai.name)        titleEl.value = data.ai.name;
+      if (priceEl && data.ai.price)       priceEl.value = data.ai.price;
+      if (descEl  && data.ai.description) descEl.value  = data.ai.description;
+      showToast('✅ AI가 상품 정보를 자동으로 채웠습니다! 내용을 확인 후 등록하세요.');
+    } else {
+      // AI 없이 기본 정보만 채우기
+      if (titleEl && !titleEl.value.trim() && data.title) titleEl.value = data.title;
+      const skipped = data.ai_skipped || '';
+      if (skipped.includes('OPENAI_API_KEY')) {
+        showToast('✅ 이미지를 불러왔습니다. (AI 분석: OPENAI_API_KEY 미설정)');
+      } else {
+        showToast('✅ 이미지를 불러왔습니다. 나머지 항목을 직접 입력해 주세요.');
+      }
+    }
   } catch (e) {
     console.error('[fetchBandPost]', e);
     showToast('오류: ' + e.message);
