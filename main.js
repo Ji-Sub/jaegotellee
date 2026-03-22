@@ -2124,6 +2124,16 @@ function renderCreate(_myToken) {
   el.innerHTML = `
       <div class="form-card">
       <div class="page-header"><h1>딜 등록</h1><p>관리자 승인 후 공개됩니다.</p></div>
+
+      <div class="form-group" style="background:#f0f7ff;border:1.5px solid #b3d4f5;border-radius:10px;padding:14px 16px 12px;">
+        <label class="form-label" style="color:#1a6bbf;font-weight:700;">📷 밴드 게시글 자동 불러오기 <span style="font-size:11px;font-weight:400;color:#555;">(선택사항)</span></label>
+        <div style="display:flex;gap:8px;align-items:stretch;">
+          <input class="form-input" id="p-band-url" type="url" placeholder="https://www.band.us/page/..." style="flex:1;min-width:0;">
+          <button type="button" id="btn-fetch-band" class="btn btn-primary btn-sm" onclick="fetchBandPost()" style="white-space:nowrap;padding:0 14px;">자동 불러오기</button>
+        </div>
+        <p style="margin:6px 0 0;font-size:11px;color:#666;">밴드 링크를 붙여넣고 버튼을 누르면 이미지·제목이 자동으로 채워집니다.</p>
+      </div>
+
       <div class="form-group"><label class="form-label">제목 *</label><input class="form-input" id="p-title" type="text" placeholder="상품명 + 핵심 특징"></div>
       <div class="form-group"><label class="form-label">카테고리 *</label><select class="form-input" id="p-cat">${catOptions}</select></div>
       <div class="form-group"><label class="form-label">가격 *</label><input class="form-input" id="p-price" type="text" placeholder="예: 35,000원/kg"></div>
@@ -2234,6 +2244,51 @@ async function submitPost() {
 
 // 인라인 onclick="submitPost()"에서 항상 호출 가능하도록 전역 노출
 window.submitPost = submitPost;
+
+// ─────────────────────────────────────────────
+// BAND 게시글 자동 불러오기
+// ─────────────────────────────────────────────
+window.fetchBandPost = async function () {
+  const bandUrlEl = document.getElementById('p-band-url');
+  const btn = document.getElementById('btn-fetch-band');
+  const bandUrl = bandUrlEl ? bandUrlEl.value.trim() : '';
+
+  if (!bandUrl) { showToast('밴드 게시글 링크를 입력해 주세요'); return; }
+  if (!bandUrl.includes('band.us')) { showToast('band.us 링크만 지원합니다'); return; }
+
+  const spinnerHtml = '<div class="spinner" style="width:13px;height:13px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></div>';
+  const originalHtml = btn ? btn.innerHTML : '자동 불러오기';
+
+  try {
+    if (btn) { btn.disabled = true; btn.innerHTML = `${spinnerHtml}불러오는 중...`; }
+
+    const res = await fetch(`/api/band?url=${encodeURIComponent(bandUrl)}`);
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      showToast('이미지를 찾을 수 없습니다: ' + (data.error || '알 수 없는 오류'));
+      return;
+    }
+
+    // 이미지 URL 앞에 우리 프록시를 자동으로 붙임 (네이버 핫링크 차단 우회)
+    const proxiedImageUrl = `/api/imgproxy?url=${encodeURIComponent(data.image_url)}`;
+
+    const imgEl  = document.getElementById('p-img');
+    const linkEl = document.getElementById('p-link');
+    const titleEl = document.getElementById('p-title');
+
+    if (imgEl) imgEl.value = proxiedImageUrl;
+    if (linkEl && !linkEl.value.trim()) linkEl.value = bandUrl;
+    if (titleEl && !titleEl.value.trim() && data.title) titleEl.value = data.title;
+
+    showToast('✅ 이미지를 자동으로 불러왔습니다!');
+  } catch (e) {
+    console.error('[fetchBandPost]', e);
+    showToast('오류: ' + e.message);
+  } finally {
+    if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
+  }
+};
 
 // ─────────────────────────────────────────────
 // MODALS
