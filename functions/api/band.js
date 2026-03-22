@@ -111,15 +111,21 @@ name 작성 규칙:
 JSON만 응답하고 다른 텍스트는 절대 포함하지 마세요.`;
 
   try {
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`;
+    // gemini-2.0-flash: 2025/2026 기준 최신 모델, 무료 할당량 제공
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`;
+
+    // systemInstruction 대신 system 역할을 user 메시지 앞에 합침 (전 버전 호환)
+    const userContent = `${SYSTEM_PROMPT}\n\n---\n\n아래 게시글을 분석해주세요:\n\n${bodyText.slice(0, 2000)}`;
 
     const aiRes = await fetch(geminiUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-goog-api-key': geminiKey, // URL 쿼리 파라미터와 이중 인증 (호환성)
+      },
       body: JSON.stringify({
-        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
         contents: [
-          { role: 'user', parts: [{ text: bodyText.slice(0, 2000) }] },
+          { role: 'user', parts: [{ text: userContent }] },
         ],
         generationConfig: {
           responseMimeType: 'application/json',
@@ -131,7 +137,11 @@ JSON만 응답하고 다른 텍스트는 절대 포함하지 마세요.`;
 
     if (!aiRes.ok) {
       const errText = await aiRes.text().catch(() => '');
-      return json({ ...baseResult, ai_skipped: `Gemini 오류 (${aiRes.status}): ${errText.slice(0, 200)}` });
+      console.error('[Gemini API error]', aiRes.status, errText);
+      return json({
+        ...baseResult,
+        ai_skipped: `Gemini 오류 (${aiRes.status}): ${errText.slice(0, 300)}`,
+      });
     }
 
     const aiData = await aiRes.json();
@@ -145,6 +155,7 @@ JSON만 응답하고 다른 텍스트는 절대 포함하지 마세요.`;
 
     return json({ ...baseResult, ai: aiParsed });
   } catch (err) {
+    console.error('[Gemini fetch error]', err);
     return json({ ...baseResult, ai_skipped: `AI 호출 오류: ${err.message}` });
   }
 }
