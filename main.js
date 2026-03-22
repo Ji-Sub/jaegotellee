@@ -139,6 +139,34 @@ function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+/**
+ * Promise에 타임아웃을 건다.
+ * Supabase 응답이 없을 때 무한 로딩 방지용.
+ */
+function withTimeout(promise, ms = 12000, msg = '요청 시간이 초과되었습니다. 네트워크를 확인해 주세요.') {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(msg)), ms);
+  });
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+}
+
+/** 공백·띄어쓰기 제거 (딜 등록 카테고리 필터 등) */
+function stripSpaces(str) {
+  return String(str || '').replace(/\s/g, '');
+}
+
+/** 딜 등록 폼: 라벨/이름/경로에서 공백 제거 후 금지 키워드 포함 시 제외 (ID 기준 필터 아님) */
+const DEAL_CREATE_FORBIDDEN_KEYWORDS = ['핫딜', '인기', '문의'];
+function isForbiddenDealCreateCategoryLeaf(c) {
+  const normLabel = stripSpaces(c.label);
+  const normName = stripSpaces(c.name);
+  const normPath = stripSpaces(c.pathLabel);
+  return DEAL_CREATE_FORBIDDEN_KEYWORDS.some(
+    kw => normLabel.includes(kw) || normName.includes(kw) || normPath.includes(kw)
+  );
+}
+
 /** 클릭 이벤트에서 e.target이 Text 노드 등이면 .closest가 없어 예외가 납니다 → Element로 정규화 */
 function eventTargetElement(e) {
   const t = e?.target;
@@ -212,7 +240,12 @@ async function doSignup(email, password) {
 }
 
 async function doLogout() {
-  if (sb) await sb.auth.signOut();
+  try {
+    if (sb) await sb.auth.signOut();
+  } catch (e) {
+    console.error('[doLogout]', e);
+    showToast(e?.message || '로그아웃 처리 중 오류가 발생했습니다');
+  }
   S.user = null; S.role = null;
   showToast('로그아웃되었습니다');
   renderNav();
@@ -242,7 +275,7 @@ async function fetchPosts(category) {
   else q = q.eq('category', category);
 
   q = q.range(start, end);
-  const { data, count } = await q;
+  const { data, count } = await withTimeout(q);
   if (count !== null) {
     S.totalCount = count;
     S.totalPages = Math.ceil(count / pageSize) || 1;
@@ -253,16 +286,18 @@ async function fetchPosts(category) {
 async function fetchPost(id) {
   if (S.isDemo) return DEMO_POSTS.find(p => p.id == id) || null;
   await sb.rpc('increment_views', { post_id: id });
-  const { data } = await sb.from('posts').select('*').eq('id', id).single();
+  const { data } = await withTimeout(sb.from('posts').select('*').eq('id', id).single());
   return data;
 }
 
 async function fetchComments(postId) {
   if (S.isDemo) return DEMO_COMMENTS;
-  const { data } = await sb.from('comments')
-    .select('*, users(email)')
-    .eq('post_id', postId)
-    .order('created_at', { ascending: true });
+  const { data } = await withTimeout(
+    sb.from('comments')
+      .select('*, users(email)')
+      .eq('post_id', postId)
+      .order('created_at', { ascending: true })
+  );
   return data || [];
 }
 
@@ -282,20 +317,20 @@ async function addComment(postId, content) {
 
 async function fetchPendingSellers() {
   if (S.isDemo) return [{ id: 'demo', user_id: 'u1', status: 'pending', created_at: new Date().toISOString(), users: { email: 'demo_seller@test.com' } }];
-  const { data } = await sb.from('seller_applications').select('*, users(email)').eq('status', 'pending').order('created_at', { ascending: false });
+  const { data } = await withTimeout(sb.from('seller_applications').select('*, users(email)').eq('status', 'pending').order('created_at', { ascending: false }));
   return data || [];
 }
 
 async function fetchPendingPosts() {
   if (S.isDemo) return [];
-  const { data, error } = await sb.from('posts').select('*').eq('approved', false).order('created_at', { ascending: false });
+  const { data, error } = await withTimeout(sb.from('posts').select('*').eq('approved', false).order('created_at', { ascending: false }));
   if (error) { showToast('대기글 조회 오류: ' + error.message); return []; }
   return data || [];
 }
 
 async function fetchAllPostsAdmin() {
   if (S.isDemo) return DEMO_POSTS;
-  const { data, error } = await sb.from('posts').select('*').order('created_at', { ascending: false });
+  const { data, error } = await withTimeout(sb.from('posts').select('*').order('created_at', { ascending: false }));
   if (error) { showToast('전체 게시글 불러오기 오류: ' + error.message); return []; }
   return data || [];
 }
@@ -381,7 +416,9 @@ function render() {
     promise.catch(e => {
       console.error('Render error:', e);
       if (S.renderToken !== currentToken) return;
-      document.getElementById('content').innerHTML = `<div class="empty-state"><div class="empty-emoji">❌</div><h3>화면을 그리는 중 오류가 발생했습니다</h3><p>${e.message}</p></div>`;
+      removeRenderSpinnerIfCurrent(currentToken);
+      const msg = e && typeof e.message === 'string' ? e.message : String(e);
+      document.getElementById('content').innerHTML = `<div class="empty-state"><div class="empty-emoji">❌</div><h3>화면을 그리는 중 오류가 발생했습니다</h3><p>${esc(msg)}</p></div>`;
     });
   }
 }
@@ -490,7 +527,8 @@ async function navigateTo(view, param = null) {
     }
   } catch (e) {
     console.error(e);
-    document.getElementById('content').innerHTML = `<div class="empty-state"><h3>오류가 발생했습니다</h3><p>${e.message}</p></div>`;
+    const msg = e && typeof e.message === 'string' ? e.message : String(e);
+    document.getElementById('content').innerHTML = `<div class="empty-state"><h3>오류가 발생했습니다</h3><p>${esc(msg)}</p></div>`;
   } finally {
     isNavigating = false;
   }
@@ -500,30 +538,38 @@ function selectCat(id) {
   S.category = id;
   S.page = 1;
   S.view = 'feed';
-  window.location.hash = '#/';
   closeDrawer();
-  render();
+  if (window.location.hash === '#/') {
+    render(); // hash가 이미 #/이면 hashchange가 안 뜨므로 직접 호출
+  } else {
+    window.location.hash = '#/'; // hashchange → handleRoute → render() 자동 실행
+  }
 }
 
 // Feed pagination UI replaced by a "Load more" button. S.page resets in renderFeed.
 
 window.loadMore = async function () {
   const btn = document.getElementById('btn-load-more');
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = '불러오는 중...';
-  }
+  const originalHtml = btn ? btn.innerHTML : '';
+  const defaultMoreLabel = '더보기 <span style="font-size:12px;opacity:0.8;">(다음 20개)</span>';
+  let pageIncremented = false;
+  try {
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '불러오는 중...';
+    }
 
-  S.page += 1;
-  const isServerCat = S.category === 'inquiry';
+    S.page += 1;
+    pageIncremented = true;
+    const isServerCat = S.category === 'inquiry';
 
-  if (S.category === 'hotdeal') {
-    const deals = await fetchHotDeals();
-    const container = document.querySelector('.hotdeal-list-container');
-    if (container && deals && deals.length > 0) {
-      const listHtml = deals.map(d => {
-        const detailParam = d.seo_url || d.post_url;
-        return `
+    if (S.category === 'hotdeal') {
+      const deals = await fetchHotDeals();
+      const container = document.querySelector('.hotdeal-list-container');
+      if (container && deals && deals.length > 0) {
+        const listHtml = deals.map(d => {
+          const detailParam = d.seo_url || d.post_url;
+          return `
           <a href="javascript:void(0)" data-navigate="hotdeal_detail" data-param="${encodeURIComponent(detailParam)}" class="hotdeal-list-item">
             <img src="${esc(d.thumbnail_url)}" alt="${esc(d.title)}" class="hotdeal-thumb" loading="lazy">
             <div class="hotdeal-info">
@@ -537,22 +583,22 @@ window.loadMore = async function () {
             </div>
           </a>
         `;
-      }).join('');
-      container.insertAdjacentHTML('beforeend', listHtml);
-    }
-  } else {
-    const posts = await fetchPosts(S.category);
-    if (isServerCat) {
-      const tbody = document.querySelector('.inquiry-table tbody');
-      if (tbody && posts && posts.length > 0) {
-        const pageSize = 20;
-        const startNum = S.totalCount - (S.page - 1) * pageSize;
-        let html = '';
-        posts.forEach((p, idx) => {
-          const num = startNum - idx;
-          const author = p.users?.email ? p.users.email.split('@')[0] : '익명';
-          const date = new Date(p.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/ /g, '').slice(0, -1);
-          html += `
+        }).join('');
+        container.insertAdjacentHTML('beforeend', listHtml);
+      }
+    } else {
+      const posts = await fetchPosts(S.category);
+      if (isServerCat) {
+        const tbody = document.querySelector('.inquiry-table tbody');
+        if (tbody && posts && posts.length > 0) {
+          const pageSize = 20;
+          const startNum = S.totalCount - (S.page - 1) * pageSize;
+          let html = '';
+          posts.forEach((p, idx) => {
+            const num = startNum - idx;
+            const author = p.users?.email ? p.users.email.split('@')[0] : '익명';
+            const date = new Date(p.created_at).toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/ /g, '').slice(0, -1);
+            html += `
             <tr class="inquiry-row" data-navigate="detail" data-param="${p.id}">
               <td class="col-num">${num}</td>
               <td class="col-title"><div class="inquiry-title-text">${esc(p.title)}</div></td>
@@ -561,25 +607,31 @@ window.loadMore = async function () {
               <td class="col-views">${p.views || 0}</td>
             </tr>
           `;
-        });
-        tbody.insertAdjacentHTML('beforeend', html);
-      }
-    } else {
-      const container = document.querySelector('.cards-grid');
-      if (container && posts && posts.length > 0) {
-        const cardsHtml = posts.map(p => cardHtml(p)).join('');
-        container.insertAdjacentHTML('beforeend', cardsHtml);
+          });
+          tbody.insertAdjacentHTML('beforeend', html);
+        }
+      } else {
+        const container = document.querySelector('.cards-grid');
+        if (container && posts && posts.length > 0) {
+          const cardsHtml = posts.map(p => cardHtml(p)).join('');
+          container.insertAdjacentHTML('beforeend', cardsHtml);
+        }
       }
     }
-  }
 
-  const loadMoreContainer = document.getElementById('load-more-container');
-  if (S.page >= S.totalPages) {
-    if (loadMoreContainer) loadMoreContainer.style.display = 'none';
-  } else {
-    if (btn) {
-      btn.disabled = false;
-      btn.innerHTML = '더보기 <span style="font-size:12px;opacity:0.8;">(다음 20개)</span>';
+    const loadMoreContainer = document.getElementById('load-more-container');
+    if (S.page >= S.totalPages) {
+      if (loadMoreContainer) loadMoreContainer.style.display = 'none';
+    }
+  } catch (e) {
+    if (pageIncremented) S.page -= 1;
+    console.error('[loadMore]', e);
+    showToast(e && typeof e.message === 'string' ? e.message : String(e));
+  } finally {
+    const b = document.getElementById('btn-load-more');
+    if (b) {
+      b.disabled = false;
+      b.innerHTML = (originalHtml && originalHtml.trim()) ? originalHtml : defaultMoreLabel;
     }
   }
 };
@@ -872,7 +924,8 @@ async function renderHotdealDetail(myToken) {
     `;
   } catch (e) {
     if (S.renderToken !== myToken) return;
-    el.innerHTML = `<div class="empty-state"><div class="empty-emoji">🚫</div><h3>핫딜을 불러올 수 없습니다</h3><p>${e.message}</p></div>`;
+    const msg = e && typeof e.message === 'string' ? e.message : String(e);
+    el.innerHTML = `<div class="empty-state"><div class="empty-emoji">🚫</div><h3>핫딜을 불러올 수 없습니다</h3><p>${esc(msg)}</p></div>`;
   } finally {
     removeRenderSpinnerIfCurrent(myToken);
   }
@@ -960,7 +1013,8 @@ async function renderFeed(myToken) {
   } catch (error) {
     console.error(`[renderFeed] Error:`, error);
     if (S.renderToken !== myToken) return;
-    el.innerHTML = `<div class="empty-state"><div class="empty-emoji">❌</div><h3>데이터를 불러오는 중 오류가 발생했습니다</h3><p>${error.message}</p></div>`;
+    const msg = error && typeof error.message === 'string' ? error.message : String(error);
+    el.innerHTML = `<div class="empty-state"><div class="empty-emoji">❌</div><h3>데이터를 불러오는 중 오류가 발생했습니다</h3><p>${esc(msg)}</p></div>`;
   } finally {
     removeRenderSpinnerIfCurrent(myToken);
   }
@@ -1318,7 +1372,7 @@ async function renderDetail(myToken) {
         ${S.user
           ? `<div class="comment-form">
                <textarea id="c-input" class="comment-input" placeholder="댓글을 입력해 주세요..."></textarea>
-               <button class="btn btn-primary btn-sm" onclick="submitComment('${post.id}')">등록</button>
+               <button type="button" id="btn-submit-comment" class="btn btn-primary btn-sm" onclick="submitComment('${post.id}')">등록</button>
              </div>`
           : `<p style="font-size:13px;color:var(--text-sub);margin-bottom:16px;">
                댓글을 남기려면 <a href="javascript:void(0)" onclick="showLoginModal();return false;" style="color:var(--primary);font-weight:600;">로그인</a>이 필요합니다.
@@ -1351,9 +1405,16 @@ async function renderDetail(myToken) {
 async function submitComment(postId) {
   const inp = document.getElementById('c-input');
   const txt = inp?.value.trim();
+  const btn = document.getElementById('btn-submit-comment');
+  const originalBtnHtml = btn ? btn.innerHTML : '';
+  const sp = '<div class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></div>';
   if (!txt) { showToast('댓글 내용을 입력해 주세요'); return; }
   if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
   try {
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `${sp}등록 중...`;
+    }
     await addComment(postId, txt);
     inp.value = '';
     showToast('댓글이 등록되었습니다');
@@ -1383,7 +1444,13 @@ async function submitComment(postId) {
 
   } catch (e) {
     console.error('댓글 작성 오류:', e);
-    showToast('오류: ' + e.message);
+    showToast('오류: ' + (e?.message || String(e)));
+  } finally {
+    const b = document.getElementById('btn-submit-comment');
+    if (b) {
+      b.disabled = false;
+      b.innerHTML = (originalBtnHtml && originalBtnHtml.trim()) ? originalBtnHtml : '등록';
+    }
   }
 }
 
@@ -1392,19 +1459,22 @@ async function submitComment(postId) {
 // ─────────────────────────────────────────────
 async function renderAdmin(myToken) {
   const el = document.getElementById('content');
-  try {
-    if (!S.isDemo && S.role !== 'admin') {
-      if (S.renderToken !== myToken) return;
-      el.innerHTML = `<div class="empty-state"><div class="empty-emoji">🔐</div><h3>관리자만 접근할 수 있습니다</h3></div>`;
-      return;
-    }
+
+  if (!S.isDemo && S.role !== 'admin') {
     if (S.renderToken !== myToken) return;
-    el.innerHTML = `<div class="loading" id="spinner-${myToken}"><div class="spinner"></div></div>`;
+    el.innerHTML = `<div class="empty-state"><div class="empty-emoji">🔐</div><h3>관리자만 접근할 수 있습니다</h3></div>`;
+    return;
+  }
+
+  if (S.renderToken !== myToken) return;
+  el.innerHTML = `<div class="loading" id="spinner-${myToken}"><div class="spinner"></div></div>`;
+
+  try {
     await renderAdminContent(myToken);
   } catch (e) {
     console.error('[renderAdmin]', e);
     if (S.renderToken !== myToken) return;
-    el.innerHTML = `<div class="empty-state"><div class="empty-emoji">❌</div><h3>관리 화면을 불러오지 못했습니다</h3><p>${esc(e.message)}</p></div>`;
+    el.innerHTML = `<div class="empty-state"><div class="empty-emoji">❌</div><h3>관리 화면을 불러오지 못했습니다</h3><p>${esc(e?.message || String(e))}</p></div>`;
   } finally {
     removeRenderSpinnerIfCurrent(myToken);
   }
@@ -1412,8 +1482,9 @@ async function renderAdmin(myToken) {
 
 async function renderAdminContent(myToken) {
   const el = document.getElementById('content');
-  if (S.renderToken !== myToken) return;
-  const tabsHtml = `
+  try {
+    if (S.renderToken !== myToken) return;
+    const tabsHtml = `
     <div class="page-header"><h1>관리자 대시보드</h1><p>판매자 승인, 게시글, 카테고리 관리</p></div>
     <div class="admin-tabs">
       <button class="admin-tab${S.adminTab === 'sellers' ? ' active' : ''}" onclick="switchTab('sellers')">판매자 승인</button>
@@ -1422,10 +1493,16 @@ async function renderAdminContent(myToken) {
       <button class="admin-tab${S.adminTab === 'categories' ? ' active' : ''}" onclick="switchTab('categories')">카테고리 관리</button>
     </div>
     <div id="admin-body"></div>`;
-  if (S.renderToken !== myToken) return;
-  el.innerHTML = tabsHtml;
-  if (S.renderToken !== myToken) return;
-  await renderAdminTab(myToken);
+    if (S.renderToken !== myToken) return;
+    el.innerHTML = tabsHtml;
+    if (S.renderToken !== myToken) return;
+    await renderAdminTab(myToken);
+  } catch (e) {
+    console.error('[renderAdminContent]', e);
+    if (S.renderToken !== myToken) return;
+    const msg = e && typeof e.message === 'string' ? e.message : String(e);
+    el.innerHTML = `<div class="empty-state"><div class="empty-emoji">❌</div><h3>관리자 화면을 불러오지 못했습니다</h3><p>${esc(msg)}</p></div>`;
+  }
 }
 
 async function switchTab(tab) {
@@ -1434,7 +1511,12 @@ async function switchTab(tab) {
   tabs.forEach(t => t.classList.remove('active'));
   tabs[['sellers', 'posts', 'all', 'categories'].indexOf(tab)]?.classList.add('active');
   const tabToken = bumpRenderToken();
-  await renderAdminTab(tabToken);
+  try {
+    await renderAdminTab(tabToken);
+  } catch (e) {
+    console.error('[switchTab]', e);
+    showToast(e && typeof e.message === 'string' ? e.message : String(e));
+  }
 }
 
 async function renderAdminTab(myToken) {
@@ -1444,148 +1526,40 @@ async function renderAdminTab(myToken) {
   body.innerHTML = `<div class="loading" id="spinner-${myToken}"><div class="spinner"></div></div>`;
 
   try {
-  if (S.adminTab === 'sellers') {
-    const data = await fetchPendingSellers();
-    if (S.renderToken !== myToken) return;
-    body.innerHTML = data.length === 0
-      ? `<div class="empty-state" ><div class="empty-emoji">✅</div><h3>대기 중인 판매자 신청이 없습니다</h3></div > `
-      : `<table class="admin-table" >
-          <thead><tr><th>이메일</th><th>신청일</th><th>상태</th><th>액션</th></tr></thead>
-          <tbody>${data.map(d => `
-            <tr>
-              <td>${esc(d.users?.email || d.user_id)}</td>
-              <td>${formatDate(d.created_at)}</td>
-              <td><span class="badge badge-pending">대기중</span></td>
-              <td><div class="btn-row">
-                <button class="btn btn-success btn-sm" onclick="approveSeller('${d.id}','${d.user_id}')">승인</button>
-                <button class="btn btn-danger btn-sm"  onclick="rejectSeller('${d.id}')">거절</button>
-              </div></td>
-            </tr>`).join('')}
-          </tbody>
-        </table > `;
-
-  } else if (S.adminTab === 'posts') {
-    const data = await fetchPendingPosts();
-    if (S.renderToken !== myToken) return;
-    body.innerHTML = data.length === 0
-      ? `<div class="empty-state" ><div class="empty-emoji">✅</div><h3>승인 대기 게시글이 없습니다</h3></div > `
-      : `<table class="admin-table" >
-          <thead><tr><th>제목</th><th>카테고리</th><th>가격</th><th>액션</th></tr></thead>
-          <tbody>${data.map(p => `
-            <tr>
-              <td>${esc(p.title)}</td>
-              <td>${esc(getCatLabel(p.category))}</td>
-              <td>${esc(formatPrice(p.price))}</td>
-              <td><div class="btn-row">
-                <button class="btn btn-success btn-sm" onclick="approvePost('${p.id}')">승인</button>
-                <button class="btn btn-danger btn-sm"  onclick="deletePost('${p.id}')">삭제</button>
-              </div></td>
-            </tr>`).join('')}
-          </tbody>
-        </table > `;
-
-  } else if (S.adminTab === 'all') {
-    const data = await fetchAllPostsAdmin();
-    if (S.renderToken !== myToken) return;
-    body.innerHTML = `
-      <div style="margin-bottom: 20px; display:flex; justify-content: flex-end;">
-        <button id="btn-deep-scrape" class="btn btn-primary" type="button">🔍 핫딜집 딥크롤링 실행</button>
-      </div>
-      ${data.length === 0 ? `<div class="empty-state" ><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3></div > ` :
-        `<table class="admin-table" >
-          <thead><tr><th>제목</th><th>카테고리</th><th>상태</th><th>조회</th><th>액션</th></tr></thead>
-          <tbody>${data.map(p => `
-            <tr>
-              <td>${esc(p.title)}</td>
-              <td>
-                <select class="form-input" style="width:140px; padding:4px;" onchange="updatePostCategory('${p.id}', this.value)">
-                  ${getCategoryOptionsHtml(p.category)}
-                </select>
-              </td>
-              <td><span class="badge ${p.approved ? 'badge-approved' : 'badge-pending'}">${p.approved ? '승인됨' : '대기중'}</span></td>
-              <td>${p.views || 0}</td>
-              <td><div class="btn-row">
-                <button class="btn btn-danger btn-sm" onclick="deletePost('${p.id}')">삭제</button>
-              </div></td>
-            </tr>`).join('')}
-        </table > `}
-    `;
-  } else if (S.adminTab === 'categories') {
-    const { data } = await sb.from('categories').select('*').order('sort_order', { ascending: true });
-    if (S.renderToken !== myToken) return;
-    const rawList = data || [];
-
-    // Build a tree map for the dropdown (all levels, not just root)
-    const mapById = {};
-    rawList.forEach(c => { mapById[c.id] = { ...c, subs: [] }; });
-    const rootTree = [];
-    rawList.forEach(c => {
-      if (c.parent_id && mapById[c.parent_id]) mapById[c.parent_id].subs.push(mapById[c.id]);
-      else if (!c.parent_id) rootTree.push(mapById[c.id]);
-    });
-
-    // Recursive function to build parent dropdown options with visible depth
-    function buildParentOpts(list, depth = 0, ancestors = []) {
-      let opts = '';
-      list.forEach(c => {
-        const label = ancestors.length > 0 ? ancestors.join(' > ') + ' > ' + c.name : c.name;
-        const prefix = '\u00a0'.repeat(depth * 4); // non-breaking space indentation
-        opts += `<option value="${c.id}">${prefix}${c.name}${ancestors.length > 0 ? ' (' + ancestors[ancestors.length - 1] + ' 하위)' : ''}</option>`;
-        if (c.subs && c.subs.length > 0) {
-          opts += buildParentOpts(c.subs, depth + 1, [...ancestors, c.name]);
-        }
-      });
-      return opts;
+    if (S.adminTab === 'sellers') {
+      const data = await fetchPendingSellers();
+      if (S.renderToken !== myToken) return;
+      body.innerHTML = data.length === 0 ? `<div class="empty-state" ><div class="empty-emoji">✅</div><h3>대기 중인 판매자 신청이 없습니다</h3></div>` : `<table class="admin-table"><thead><tr><th>이메일</th><th>신청일</th><th>상태</th><th>액션</th></tr></thead><tbody>${data.map(d => `<tr><td>${esc(d.users?.email || d.user_id)}</td><td>${formatDate(d.created_at)}</td><td><span class="badge badge-pending">대기중</span></td><td><div class="btn-row"><button class="btn btn-success btn-sm" onclick="approveSeller('${d.id}','${d.user_id}')">승인</button><button class="btn btn-danger btn-sm"  onclick="rejectSeller('${d.id}')">거절</button></div></td></tr>`).join('')}</tbody></table>`;
+    } else if (S.adminTab === 'posts') {
+      const data = await fetchPendingPosts();
+      if (S.renderToken !== myToken) return;
+      body.innerHTML = data.length === 0 ? `<div class="empty-state" ><div class="empty-emoji">✅</div><h3>승인 대기 게시글이 없습니다</h3></div>` : `<table class="admin-table"><thead><tr><th>제목</th><th>카테고리</th><th>가격</th><th>액션</th></tr></thead><tbody>${data.map(p => `<tr><td>${esc(p.title)}</td><td>${esc(getCatLabel(p.category))}</td><td>${esc(formatPrice(p.price))}</td><td><div class="btn-row"><button class="btn btn-success btn-sm" onclick="approvePost('${p.id}')">승인</button><button class="btn btn-danger btn-sm"  onclick="deletePost('${p.id}')">삭제</button></div></td></tr>`).join('')}</tbody></table>`;
+    } else if (S.adminTab === 'all') {
+      const data = await fetchAllPostsAdmin();
+      if (S.renderToken !== myToken) return;
+      body.innerHTML = `<div style="margin-bottom: 20px; display:flex; justify-content: flex-end;"><button id="btn-deep-scrape" class="btn btn-primary" type="button">🔍 핫딜집 딥크롤링 실행</button></div>${data.length === 0 ? `<div class="empty-state" ><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3></div>` : `<table class="admin-table"><thead><tr><th>제목</th><th>카테고리</th><th>상태</th><th>조회</th><th>액션</th></tr></thead><tbody>${data.map(p => `<tr><td>${esc(p.title)}</td><td><select class="form-input" style="width:140px; padding:4px;" onchange="updatePostCategory('${p.id}', this.value)">${getCategoryOptionsHtml(p.category)}</select></td><td><span class="badge ${p.approved ? 'badge-approved' : 'badge-pending'}">${p.approved ? '승인됨' : '대기중'}</span></td><td>${p.views || 0}</td><td><div class="btn-row"><button class="btn btn-danger btn-sm" onclick="deletePost('${p.id}')">삭제</button></div></td></tr>`).join('')}</table>`}`;
+    } else if (S.adminTab === 'categories') {
+      const { data } = await sb.from('categories').select('*').order('sort_order', { ascending: true });
+      if (S.renderToken !== myToken) return;
+      const rawList = data || [];
+      const mapById = {}; rawList.forEach(c => { mapById[c.id] = { ...c, subs: [] }; });
+      const rootTree = []; rawList.forEach(c => { if (c.parent_id && mapById[c.parent_id]) mapById[c.parent_id].subs.push(mapById[c.id]); else if (!c.parent_id) rootTree.push(mapById[c.id]); });
+      function buildParentOpts(list, depth = 0, ancestors = []) { let opts = ''; list.forEach(c => { const prefix = '\u00a0'.repeat(depth * 4); opts += `<option value="${c.id}">${prefix}${c.name}${ancestors.length > 0 ? ' (' + ancestors[ancestors.length - 1] + ' 하위)' : ''}</option>`; if (c.subs && c.subs.length > 0) { opts += buildParentOpts(c.subs, depth + 1, [...ancestors, c.name]); } }); return opts; }
+      const parentOpts = buildParentOpts(rootTree);
+      const depthLabels = ['대분류', '중분류', '소분류', '하위분류'];
+      function buildTableRows(list, depth = 0) { let rows = ''; list.forEach(c => { const indent = '\u00a0\u00a0'.repeat(depth * 2); const depthLabel = depthLabels[depth] || `${depth + 1}단계`; const arrow = depth > 0 ? '↳ ' : ''; rows += `<tr><td>${c.sort_order || 0}</td><td><span style="color: ${depth === 0 ? '#333' : depth === 1 ? '#666' : '#999'}; font-size: ${depth === 0 ? '13px' : '12px'}">${depthLabel}</span></td><td>${indent}${arrow}${esc(c.name)}</td><td>${esc(c.icon || '')}</td><td><button class="btn btn-danger btn-sm" onclick="deleteAdminCategory('${c.id}')">삭제</button></td></tr>`; if (c.subs && c.subs.length > 0) rows += buildTableRows(c.subs, depth + 1); }); return rows; }
+      body.innerHTML = `<form id="admin-category-form" class="admin-category-form" style="margin-bottom: 20px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; background:#f9f9f9; padding:15px; border-radius:8px;" action="#" method="post" novalidate><input type="text" id="new-cat-name" name="new_cat_name" placeholder="카테고리명 (새 카테고리)" class="form-input" style="width:180px;" autocomplete="off" /><input type="number" id="new-cat-sort" name="new_cat_sort" placeholder="순서(숫자)" class="form-input" style="width:100px;" value="1" /><input type="text" id="new-cat-icon" name="new_cat_icon" placeholder="아이콘(예:🍎)" class="form-input" style="width:120px;" autocomplete="off" /><select id="new-cat-parent" name="new_cat_parent" class="form-input" style="width:220px;" aria-label="상위 카테고리"><option value="">(최상위 대분류)</option>${parentOpts}</select><button type="submit" id="btn-add-admin-category" class="btn btn-primary btn-sm">추가</button></form><table class="admin-table"><thead><tr><th>순서</th><th>유형</th><th>이름</th><th>아이콘</th><th>액션</th></tr></thead><tbody>${buildTableRows(rootTree)}</tbody></table>`;
     }
-    const parentOpts = buildParentOpts(rootTree);
-
-    // Recursive function to build flat table rows with depth label
-    const depthLabels = ['대분류', '중분류', '소분류', '하위분류'];
-    function buildTableRows(list, depth = 0) {
-      let rows = '';
-      list.forEach(c => {
-        const indent = '\u00a0\u00a0'.repeat(depth * 2);
-        const depthLabel = depthLabels[depth] || `${depth + 1}단계`;
-        const arrow = depth > 0 ? '↳ ' : '';
-        rows += `
-          <tr>
-            <td>${c.sort_order || 0}</td>
-            <td><span style="color: ${depth === 0 ? '#333' : depth === 1 ? '#666' : '#999'}; font-size: ${depth === 0 ? '13px' : '12px'}">${depthLabel}</span></td>
-            <td>${indent}${arrow}${esc(c.name)}</td>
-            <td>${esc(c.icon || '')}</td>
-            <td><button class="btn btn-danger btn-sm" onclick="deleteAdminCategory('${c.id}')">삭제</button></td>
-          </tr>`;
-        if (c.subs && c.subs.length > 0) rows += buildTableRows(c.subs, depth + 1);
-      });
-      return rows;
-    }
-
-    if (S.renderToken !== myToken) return;
-    body.innerHTML = `
-      <form id="admin-category-form" class="admin-category-form" style="margin-bottom: 20px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; background:#f9f9f9; padding:15px; border-radius:8px;" action="#" method="post" novalidate>
-        <input type="text" id="new-cat-name" name="new_cat_name" placeholder="카테고리명 (새 카테고리)" class="form-input" style="width:180px;" autocomplete="off" />
-        <input type="number" id="new-cat-sort" name="new_cat_sort" placeholder="순서(숫자)" class="form-input" style="width:100px;" value="1" />
-        <input type="text" id="new-cat-icon" name="new_cat_icon" placeholder="아이콘(예:🍎)" class="form-input" style="width:120px;" autocomplete="off" />
-        <select id="new-cat-parent" name="new_cat_parent" class="form-input" style="width:220px;" aria-label="상위 카테고리">
-          <option value="">(최상위 대분류)</option>
-          ${parentOpts}
-        </select>
-        <button type="submit" id="btn-add-admin-category" class="btn btn-primary btn-sm">추가</button>
-      </form>
-      <table class="admin-table">
-        <thead><tr><th>순서</th><th>유형</th><th>이름</th><th>아이콘</th><th>액션</th></tr></thead>
-        <tbody>
-          ${buildTableRows(rootTree)}
-        </tbody>
-      </table>
-    `;
-  }
   } catch (e) {
-    console.error('[renderAdminTab]', e);
+    console.error('[renderAdminTab 에러]', e);
     if (S.renderToken !== myToken) return;
-    body.innerHTML = `<div class="empty-state"><div class="empty-emoji">❌</div><h3>탭 데이터를 불러오지 못했습니다</h3><p>${esc(e.message)}</p></div>`;
+    // 🔥 [수정됨] 무한 스피너 대신 에러 메시지로 덮어쓰기
+    body.innerHTML = `<div class="empty-state"><div class="empty-emoji">❌</div><h3>데이터를 불러오지 못했습니다</h3><p>${esc(e.message)}</p></div>`;
   } finally {
-    removeRenderSpinnerIfCurrent(myToken);
+    // admin-body 내 스피너 직접 제거 (renderToken이 일치할 때만)
+    if (S.renderToken === myToken) {
+      document.getElementById(`spinner-${myToken}`)?.remove();
+    }
   }
 }
 
@@ -1606,14 +1580,23 @@ function getCategoryOptionsHtml(selectedCat) {
 
 window.updatePostCategory = async function (postId, newCategoryId) {
   if (S.isDemo) { showToast('데모 모드 제한'); return; }
-  const { error } = await sb.from('posts').update({ category: newCategoryId }).eq('id', postId);
-  if (error) { showToast('카테고리 업데이트 실패: ' + error.message); return; }
-  showToast('해당 게시글의 카테고리가 갱신되었습니다.');
+  try {
+    const { error } = await sb.from('posts').update({ category: newCategoryId }).eq('id', postId);
+    if (error) throw error;
+    showToast('해당 게시글의 카테고리가 갱신되었습니다.');
+  } catch (e) {
+    console.error('[updatePostCategory]', e);
+    showToast('카테고리 업데이트 실패: ' + (e?.message || String(e)));
+  }
 };
 
 window.addAdminCategory = async function (e) {
   if (e && typeof e.preventDefault === 'function') e.preventDefault();
   console.log('[addAdminCategory] 트리거됨', { type: e?.type, isDemo: S.isDemo, hasSb: !!sb });
+
+  const submitBtn = document.getElementById('btn-add-admin-category');
+  const originalBtnHtml = submitBtn ? submitBtn.innerHTML : '';
+  const btnSpinner = '<div class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></div>';
 
   try {
     if (S.isDemo) {
@@ -1652,6 +1635,11 @@ window.addAdminCategory = async function (e) {
     const payload = { name, sort_order, icon };
     if (parent_id) payload.parent_id = parseInt(parent_id, 10);
 
+    if (submitBtn) {
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = `${btnSpinner}추가 중...`;
+    }
+
     console.log('[addAdminCategory] Supabase insert 요청', payload);
     const { error } = await sb.from('categories').insert([payload]);
     if (error) {
@@ -1667,7 +1655,13 @@ window.addAdminCategory = async function (e) {
     renderNav();
   } catch (err) {
     console.error('[addAdminCategory] 처리 중 예외', err);
-    alert('에러 발생: 추가 버튼 처리 중 오류가 발생했습니다. (' + err.message + ')');
+    alert('에러 발생: 추가 버튼 처리 중 오류가 발생했습니다. (' + (err?.message || String(err)) + ')');
+  } finally {
+    const b = document.getElementById('btn-add-admin-category');
+    if (b) {
+      b.disabled = false;
+      b.innerHTML = (originalBtnHtml && originalBtnHtml.trim()) ? originalBtnHtml : '추가';
+    }
   }
 };
 
@@ -1727,13 +1721,17 @@ window.deleteAdminCategory = async function (id) {
   if (S.isDemo) { showToast('데모 모드 제한'); return; }
   if (!confirm('정말 삭제하시겠습니까?\n하위 카테고리가 있다면 오류가 발생할 수 있습니다.')) return;
 
-  const { error } = await sb.from('categories').delete().eq('id', id);
-  if (error) { showToast('삭제 실패: ' + error.message); return; }
-
-  showToast('데이터가 삭제되었습니다.');
-  await loadCategories();
-  await renderAdminTab(bumpRenderToken());
-  renderNav();
+  try {
+    const { error } = await sb.from('categories').delete().eq('id', id);
+    if (error) throw error;
+    showToast('데이터가 삭제되었습니다.');
+    await loadCategories();
+    await renderAdminTab(bumpRenderToken());
+    renderNav();
+  } catch (e) {
+    console.error('[deleteAdminCategory]', e);
+    showToast('삭제 실패: ' + (e?.message || String(e)));
+  }
 };
 
 window.triggerScraping = async function () {
@@ -1773,10 +1771,13 @@ window.triggerScraping = async function () {
       alert('스크래핑 실패 (원인 불명): ' + JSON.stringify(data).substring(0, 300));
     }
   } catch (e) {
-    alert('오류 발생: ' + e.message);
+    alert('오류 발생: ' + (e?.message || String(e)));
   } finally {
-    btn.disabled = false;
-    btn.innerHTML = originalHtml;
+    const b = document.getElementById('btn-deep-scrape');
+    if (b) {
+      b.disabled = false;
+      b.innerHTML = originalHtml;
+    }
   }
 };
 
@@ -1790,29 +1791,54 @@ document.addEventListener('click', function (e) {
 
 async function approveSeller(appId, userId) {
   if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
-  await sb.from('seller_applications').update({ status: 'approved' }).eq('id', appId);
-  await sb.from('users').update({ role: 'seller' }).eq('id', userId);
-  showToast('판매자로 승인되었습니다');
-  await renderAdminTab(bumpRenderToken());
+  try {
+    const { error: e1 } = await sb.from('seller_applications').update({ status: 'approved' }).eq('id', appId);
+    if (e1) throw e1;
+    const { error: e2 } = await sb.from('users').update({ role: 'seller' }).eq('id', userId);
+    if (e2) throw e2;
+    showToast('판매자로 승인되었습니다');
+    await renderAdminTab(bumpRenderToken());
+  } catch (e) {
+    console.error('[approveSeller]', e);
+    showToast(e?.message || String(e));
+  }
 }
 async function rejectSeller(appId) {
   if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
-  await sb.from('seller_applications').update({ status: 'rejected' }).eq('id', appId);
-  showToast('신청이 거절되었습니다');
-  await renderAdminTab(bumpRenderToken());
+  try {
+    const { error } = await sb.from('seller_applications').update({ status: 'rejected' }).eq('id', appId);
+    if (error) throw error;
+    showToast('신청이 거절되었습니다');
+    await renderAdminTab(bumpRenderToken());
+  } catch (e) {
+    console.error('[rejectSeller]', e);
+    showToast(e?.message || String(e));
+  }
 }
 async function approvePost(postId) {
   if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
-  await sb.from('posts').update({ approved: true }).eq('id', postId);
-  showToast('게시글이 승인되었습니다');
-  await renderAdminTab(bumpRenderToken());
+  try {
+    const { error } = await sb.from('posts').update({ approved: true }).eq('id', postId);
+    if (error) throw error;
+    showToast('게시글이 승인되었습니다');
+    await renderAdminTab(bumpRenderToken());
+  } catch (e) {
+    console.error('[approvePost]', e);
+    showToast(e?.message || String(e));
+  }
 }
 async function deletePost(postId) {
   if (!confirm('정말 삭제하시겠습니까?')) return;
   if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
-  await sb.from('posts').delete().eq('id', postId);
-  showToast('삭제되었습니다');
-  await renderAdminTab(bumpRenderToken());
+  try {
+    const { error } = await sb.from('posts').delete().eq('id', postId);
+    if (error) throw error;
+    showToast('삭제되었습니다');
+    await renderAdminTab(bumpRenderToken());
+  } catch (e) {
+    console.error('[deletePost]', e);
+    showToast(e?.message || String(e));
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -1844,18 +1870,33 @@ function renderApply(_myToken) {
         <label class="form-label">판매 상품 소개</label>
         <textarea class="form-input" id="apply-desc" placeholder="어떤 재고를 판매하실 예정인지 간략히 적어주세요."></textarea>
       </div>
-      <button class="btn btn-primary btn-full" onclick="submitApply()">신청하기</button>
+      <button type="button" id="btn-submit-apply" class="btn btn-primary btn-full" onclick="submitApply()">신청하기</button>
     </div > `;
 }
 
 async function submitApply() {
-  if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
+  const btn = document.getElementById('btn-submit-apply');
+  const originalHtml = btn ? btn.innerHTML : '';
+  const sp = '<div class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;"></div>';
   try {
-    const { error } = await sb.from('seller_applications').insert({ user_id: S.user.id, status: 'pending' });
+    if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `${sp}신청 중...`;
+    }
+    const { error } = await withTimeout(sb.from('seller_applications').insert({ user_id: S.user.id, status: 'pending' }), 15000);
     if (error) throw error;
     showToast('신청이 접수되었습니다. 검토 후 승인됩니다.');
     navigateTo('feed');
-  } catch (e) { showToast('오류: ' + e.message); }
+  } catch (e) {
+    showToast('오류: ' + (e?.message || String(e)));
+  } finally {
+    const b = document.getElementById('btn-submit-apply');
+    if (b) {
+      b.disabled = false;
+      b.innerHTML = (originalHtml && originalHtml.trim()) ? originalHtml : '신청하기';
+    }
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -1883,41 +1924,57 @@ function renderCreateInquiry(_myToken) {
         <label class="form-label">내용 *</label>
         <textarea class="form-input" id="i-desc" style="min-height:130px;" placeholder="문의하시려는 내용을 자세히 적어주세요."></textarea>
       </div>
-      <button class="btn btn-primary btn-full" onclick="submitInquiry()">등록 하기</button>
+      <button type="button" id="btn-submit-inquiry" class="btn btn-primary btn-full" onclick="submitInquiry()">등록 하기</button>
     </div > `;
 }
 
 async function submitInquiry() {
-  const title = document.getElementById('i-title').value.trim();
-  const desc = document.getElementById('i-desc').value.trim();
-  if (!title || !desc) { showToast('제목과 내용을 모두 입력해주세요'); return; }
-
-  if (S.isDemo) {
-    DEMO_POSTS.unshift({ id: Date.now(), title, description: desc, price: '', image_url: null, category: 'inquiry', views: 0, comment_count: 0, approved: true, is_hot: false });
-    showToast('문의가 등록되었습니다 (데모)');
-    selectCat('inquiry');
-    return;
-  }
-
-  const post = {
-    user_id: S.user.id,
-    title,
-    description: desc,
-    category: 'inquiry',
-    price: null,
-    views: 0,
-    comment_count: 0,
-    approved: true,
-    is_hot: false
-  };
-
+  const btn = document.getElementById('btn-submit-inquiry');
+  const originalHtml = btn ? btn.innerHTML : '';
+  const sp = '<div class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;"></div>';
   try {
-    const { error } = await sb.from('posts').insert(post);
+    const titleEl = document.getElementById('i-title');
+    const descEl = document.getElementById('i-desc');
+    const title = titleEl ? titleEl.value.trim() : '';
+    const desc = descEl ? descEl.value.trim() : '';
+    if (!title || !desc) { showToast('제목과 내용을 모두 입력해주세요'); return; }
+
+    if (S.isDemo) {
+      DEMO_POSTS.unshift({ id: Date.now(), title, description: desc, price: '', image_url: null, category: 'inquiry', views: 0, comment_count: 0, approved: true, is_hot: false });
+      showToast('문의가 등록되었습니다 (데모)');
+      selectCat('inquiry');
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `${sp}등록 중...`;
+    }
+
+    const post = {
+      user_id: S.user.id,
+      title,
+      description: desc,
+      category: 'inquiry',
+      price: null,
+      views: 0,
+      comment_count: 0,
+      approved: true,
+      is_hot: false
+    };
+
+    const { error } = await withTimeout(sb.from('posts').insert(post), 15000);
     if (error) throw error;
     showToast('문의가 등록되었습니다');
     selectCat('inquiry');
   } catch (e) {
-    showToast('오류: ' + e.message);
+    showToast('오류: ' + (e?.message || String(e)));
+  } finally {
+    const b = document.getElementById('btn-submit-inquiry');
+    if (b) {
+      b.disabled = false;
+      b.innerHTML = (originalHtml && originalHtml.trim()) ? originalHtml : '등록 하기';
+    }
   }
 }
 
@@ -1951,70 +2008,46 @@ function getLeafCategories(items = CATEGORIES, forbiddenIds = [], ancestorLabels
 function renderCreate(_myToken) {
   const el = document.getElementById('content');
   if (!S.user) {
-    el.innerHTML = `<div class="form-card" > <div class="empty-state"><div class="empty-emoji">🔒</div><h3>로그인이 필요합니다</h3></div></div > `;
+    el.innerHTML = `<div class="form-card"><div class="empty-state"><div class="empty-emoji">🔒</div><h3>로그인이 필요합니다</h3></div></div>`;
     return;
   }
   if (S.role !== 'seller' && S.role !== 'admin') {
-    el.innerHTML = `<div class="form-card" > <div class="empty-state"><div class="empty-emoji">🚫</div><h3>판매자 계정이 필요합니다</h3><p>판매자 신청 후 관리자 승인이 필요합니다.</p><br><button class="btn btn-primary" onclick="navigateTo('apply')">판매자 신청하기</button></div></div > `;
+    el.innerHTML = `<div class="form-card"><div class="empty-state"><div class="empty-emoji">🚫</div><h3>판매자 계정이 필요합니다</h3><p>판매자 신청 후 관리자 승인이 필요합니다.</p><br><button class="btn btn-primary" onclick="navigateTo('apply')">판매자 신청하기</button></div></div>`;
     return;
   }
 
-  // 뷰 전용 카테고리는 DB id가 아닌 한글 이름(label/name) 기준으로 제외 (뎁스/pathLabel 로직은 getLeafCategories 그대로)
   const allLeaves = getLeafCategories(CATEGORIES, []);
-  const forbiddenNames = ['핫딜모음', '핫딜 모음', '인기딜', '문의'];
-  const selectable = allLeaves.filter(c =>
-    !forbiddenNames.some(f =>
-      (c.label && c.label.includes(f)) || c.name === f
-    )
-  );
+  // 🔥 초강력 필터링: 라벨이나 이름에 금지어 포함 시 무조건 제외
+  const forbidden = ['핫딜', '인기', '문의'];
+  const selectable = allLeaves.filter(c => {
+    const str = (c.label + ' ' + c.name + ' ' + c.pathLabel).replace(/\s/g, '');
+    return !forbidden.some(kw => str.includes(kw));
+  });
+
   const catOptions = selectable.map(s =>
     `<option value="${esc(String(s.id))}">${esc(s.pathLabel || s.label)}</option>`
   ).join('');
 
   el.innerHTML = `
-      <div class="form-card" >
+      <div class="form-card">
       <div class="page-header"><h1>딜 등록</h1><p>관리자 승인 후 공개됩니다.</p></div>
-      <div class="form-group">
-        <label class="form-label">제목 *</label>
-        <input  class="form-input" id="p-title" type="text" placeholder="상품명 + 핵심 특징">
-      </div>
-      <div class="form-group">
-        <label class="form-label">카테고리 *</label>
-        <select class="form-input" id="p-cat">${catOptions}</select>
-      </div>
-      <div class="form-group">
-        <label class="form-label">가격 *</label>
-        <input class="form-input" id="p-price" type="text" placeholder="예: 35,000원/kg">
-      </div>
-      <div class="form-group">
-        <label class="form-label">상세 설명 *</label>
-        <textarea class="form-input" id="p-desc" style="min-height:130px;" placeholder="상품 상태, 수량, 배송 방법 등을 자세히 적어주세요."></textarea>
-      </div>
-      <div class="form-group">
-        <label class="form-label">이미지 URL</label>
-        <input class="form-input" id="p-img" type="url" placeholder="https://...">
-      </div>
-      <div class="form-group">
-        <label class="form-label">구매 링크</label>
-        <input class="form-input" id="p-link" type="url" placeholder="https://...">
-      </div>
+      <div class="form-group"><label class="form-label">제목 *</label><input class="form-input" id="p-title" type="text" placeholder="상품명 + 핵심 특징"></div>
+      <div class="form-group"><label class="form-label">카테고리 *</label><select class="form-input" id="p-cat">${catOptions}</select></div>
+      <div class="form-group"><label class="form-label">가격 *</label><input class="form-input" id="p-price" type="text" placeholder="예: 35,000원/kg"></div>
+      <div class="form-group"><label class="form-label">상세 설명 *</label><textarea class="form-input" id="p-desc" style="min-height:130px;" placeholder="상품 상태, 수량, 배송 방법 등을 자세히 적어주세요."></textarea></div>
+      <div class="form-group"><label class="form-label">이미지 URL</label><input class="form-input" id="p-img" type="url" placeholder="https://..."></div>
+      <div class="form-group"><label class="form-label">구매 링크</label><input class="form-input" id="p-link" type="url" placeholder="https://..."></div>
       <button type="button" id="btn-submit-post" class="btn btn-primary btn-full" onclick="submitPost()">등록 신청</button>
-    </div > `;
+    </div>`;
 }
 
 async function submitPost() {
+  const btn = document.getElementById('btn-submit-post');
   const spinnerHtml = '<div class="spinner" style="width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:8px;"></div>';
 
   try {
-    if (S.isDemo) {
-      showToast('데모 모드에서는 사용할 수 없습니다');
-      return;
-    }
-    if (!sb || !S.user) {
-      showToast('로그인 또는 데이터 연결이 필요합니다');
-      showLoginModal();
-      return;
-    }
+    if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
+    if (!sb || !S.user) { showToast('로그인 또는 데이터 연결이 필요합니다'); showLoginModal(); return; }
 
     const titleEl = document.getElementById('p-title');
     const catEl = document.getElementById('p-cat');
@@ -2035,25 +2068,20 @@ async function submitPost() {
       return;
     }
 
-    const btn = document.getElementById('btn-submit-post');
     if (btn) {
       btn.disabled = true;
       btn.innerHTML = `${spinnerHtml}등록 중...`;
     }
 
-    const { error } = await sb.from('posts').insert({
-      title,
-      category: cat,
-      price,
-      description: desc,
-      image_url,
-      purchase_link,
-      is_hot: false,
-      approved: false,
-      views: 0,
-      comment_count: 0,
-      user_id: S.user.id
-    });
+    // 🔥 [수정됨] Supabase 데이터 타입 오류 방지 (가격에서 숫자만 추출)
+    const numPrice = parseInt(price.replace(/[^0-9]/g, ''), 10) || 0;
+
+    const { error } = await withTimeout(sb.from('posts').insert({
+      title, category: cat, price: numPrice, description: desc,
+      image_url, purchase_link, is_hot: false, approved: false,
+      views: 0, comment_count: 0, user_id: S.user.id
+    }), 15000);
+
     if (error) {
       console.error('[submitPost] Supabase insert 실패', error);
       throw error;
@@ -2069,15 +2097,14 @@ async function submitPost() {
 
     navigateTo('feed');
   } catch (e) {
-    console.error('[submitPost]', e);
+    console.error('[submitPost 에러]', e);
     const msg = e && typeof e.message === 'string' ? e.message : String(e);
-    showToast(msg);
+    showToast('오류 발생: ' + msg);
   } finally {
-    // 성공 후 피드로 이동해도, 실패·검증 실패 후에도 DOM에 버튼이 남아 있으면 무조건 복구 (무한 로딩 방지)
-    const submitBtn = document.getElementById('btn-submit-post');
-    if (submitBtn) {
-      submitBtn.disabled = false;
-      submitBtn.innerHTML = '등록 신청';
+    // 🔥 [수정됨] 무조건 버튼 원래 상태로 되돌리기 (무한로딩 완벽 차단)
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '등록 신청';
     }
   }
 }
@@ -2112,7 +2139,7 @@ function showLoginModal() {
       <input class="form-input" id="l-pw" type="password" placeholder="비밀번호" autocomplete="current-password"
         onkeydown="if(event.key==='Enter')modalLogin()">
     </div>
-    <button class="btn btn-primary btn-full" onclick="modalLogin()">로그인</button>
+    <button type="button" id="modal-btn-login" class="btn btn-primary btn-full" onclick="modalLogin()">로그인</button>
     <div class="modal-switch">계정이 없으신가요? <a onclick="showSignupModal()">판매자 가입</a></div>`);
   setTimeout(() => document.getElementById('l-email')?.focus(), 50);
 }
@@ -2132,7 +2159,7 @@ function showSignupModal() {
       <input class="form-input" id="s-pw" type="password" placeholder="비밀번호" autocomplete="new-password"
         onkeydown="if(event.key==='Enter')modalSignup()">
     </div>
-    <button class="btn btn-primary btn-full" onclick="modalSignup()">가입하기</button>
+    <button type="button" id="modal-btn-signup" class="btn btn-primary btn-full" onclick="modalSignup()">가입하기</button>
     <div class="modal-switch">이미 계정이 있으신가요? <a onclick="showLoginModal()">로그인</a></div>`);
   setTimeout(() => document.getElementById('s-email')?.focus(), 50);
 }
@@ -2141,31 +2168,91 @@ async function modalLogin() {
   const email = document.getElementById('l-email')?.value.trim();
   const pw = document.getElementById('l-pw')?.value;
   const errEl = document.getElementById('modal-err');
-  if (!email || !pw) { errEl.textContent = '이메일과 비밀번호를 입력해 주세요'; return; }
-  try { await doLogin(email, pw); } catch (e) { errEl.textContent = e.message; }
+  const btn = document.getElementById('modal-btn-login');
+  const originalHtml = btn ? btn.innerHTML : '';
+  try {
+    if (!email || !pw) {
+      if (errEl) errEl.textContent = '이메일과 비밀번호를 입력해 주세요';
+      return;
+    }
+    if (errEl) errEl.textContent = '';
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '로그인 중...';
+    }
+    await doLogin(email, pw);
+  } catch (e) {
+    if (errEl) errEl.textContent = e?.message || String(e);
+  } finally {
+    const b = document.getElementById('modal-btn-login');
+    const modal = document.getElementById('modal-container');
+    if (b && modal?.contains(b)) {
+      b.disabled = false;
+      b.innerHTML = (originalHtml && originalHtml.trim()) ? originalHtml : '로그인';
+    }
+  }
 }
 
 async function modalSignup() {
   const email = document.getElementById('s-email')?.value.trim();
   const pw = document.getElementById('s-pw')?.value;
   const errEl = document.getElementById('modal-err');
-  if (!email || !pw) { errEl.textContent = '이메일과 비밀번호를 입력해 주세요'; return; }
-  if (pw.length < 6) { errEl.textContent = '비밀번호는 6자 이상이어야 합니다'; return; }
-  try { await doSignup(email, pw); } catch (e) { errEl.textContent = e.message; }
+  const btn = document.getElementById('modal-btn-signup');
+  const originalHtml = btn ? btn.innerHTML : '';
+  try {
+    if (!email || !pw) {
+      if (errEl) errEl.textContent = '이메일과 비밀번호를 입력해 주세요';
+      return;
+    }
+    if (pw.length < 6) {
+      if (errEl) errEl.textContent = '비밀번호는 6자 이상이어야 합니다';
+      return;
+    }
+    if (errEl) errEl.textContent = '';
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = '가입 중...';
+    }
+    await doSignup(email, pw);
+  } catch (e) {
+    if (errEl) errEl.textContent = e?.message || String(e);
+  } finally {
+    const b = document.getElementById('modal-btn-signup');
+    const modal = document.getElementById('modal-container');
+    if (b && modal?.contains(b)) {
+      b.disabled = false;
+      b.innerHTML = (originalHtml && originalHtml.trim()) ? originalHtml : '가입하기';
+    }
+  }
 }
 
 // ─────────────────────────────────────────────
 // INIT
 // ─────────────────────────────────────────────
 async function init() {
-  await loadCategories();
+  try {
+    await loadCategories();
+  } catch (e) {
+    console.error('[init] loadCategories', e);
+    showToast(e?.message || '카테고리를 불러오지 못했습니다');
+  }
   if (sb) {
-    const { data: { session } } = await sb.auth.getSession();
-    if (session) { S.user = session.user; await loadRole(); }
+    try {
+      const { data: sessionData } = await sb.auth.getSession();
+      const session = sessionData?.session ?? null;
+      if (session) { S.user = session.user; await loadRole(); }
+    } catch (e) {
+      console.error('[init] getSession', e);
+      showToast(e?.message || '세션을 확인하지 못했습니다');
+    }
     sb.auth.onAuthStateChange(async (_event, session) => {
-      S.user = session?.user || null;
-      if (S.user) await loadRole(); else S.role = null;
-      renderNav();
+      try {
+        S.user = session?.user || null;
+        if (S.user) await loadRole(); else S.role = null;
+        renderNav();
+      } catch (e) {
+        console.error('[onAuthStateChange]', e);
+      }
     });
   }
   window.addEventListener('hashchange', handleRoute);
