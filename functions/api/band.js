@@ -52,23 +52,38 @@ export async function onRequest(context) {
     return json({ error: '이미지를 찾을 수 없습니다. 비공개 게시글이거나 지원하지 않는 페이지입니다.' }, 404);
   }
 
-  const ogTitle = extractMeta(html, 'og:title') || '';
+  const ogTitle       = extractMeta(html, 'og:title')       || '';
+  const ogDescription = extractMeta(html, 'og:description') || '';
 
   // ── 3. 본문 텍스트 추출 ─────────────────────────────────────────────────
   const bodyText = extractBodyText(html);
 
+  // 디버그 로그 (Cloudflare Pages 로그에서 확인 가능)
+  console.log('[band.js] ogTitle len:', ogTitle.length, '|', ogTitle.slice(0, 80));
+  console.log('[band.js] ogDesc  len:', ogDescription.length, '|', ogDescription.slice(0, 80));
+  console.log('[band.js] bodyText len:', bodyText.length);
+
+  // og:title / og:description / bodyText 중 하나라도 있으면 AI에 전달
+  const aiInput = [
+    ogTitle       ? `게시글 제목: ${ogTitle}`       : '',
+    ogDescription ? `게시글 요약: ${ogDescription}` : '',
+    bodyText      ? `게시글 본문:\n${bodyText}`      : '',
+  ].filter(Boolean).join('\n\n').trim();
+
+  console.log('[band.js] aiInput len:', aiInput.length);
+
   // 기본 응답 (AI 없이도 이미지는 반환)
   const baseResult = {
     success: true,
-    images,               // 원본 이미지 URL 배열 (클라이언트에서 프록시 붙임)
-    image_url: images[0], // 하위 호환성용 첫 이미지
+    images,
+    image_url: images[0],
     title: ogTitle,
     body_text: bodyText,
     ai: null,
   };
 
-  if (!bodyText || bodyText.length < 10) {
-    return json({ ...baseResult, ai_skipped: 'body_too_short' });
+  if (aiInput.length < 10) {
+    return json({ ...baseResult, ai_skipped: '분석할 텍스트 없음 (og:title·description·본문 모두 비어있음)' });
   }
 
   // ── 4. Gemini API로 상품 정보 구조화 ────────────────────────────────────
@@ -114,8 +129,7 @@ JSON만 응답하고 다른 텍스트는 절대 포함하지 마세요.`;
     // gemini-2.0-flash: 2025/2026 기준 최신 모델, 무료 할당량 제공
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`;
 
-    // systemInstruction 대신 system 역할을 user 메시지 앞에 합침 (전 버전 호환)
-    const userContent = `${SYSTEM_PROMPT}\n\n---\n\n아래 게시글을 분석해주세요:\n\n${bodyText.slice(0, 2000)}`;
+    const userContent = `${SYSTEM_PROMPT}\n\n---\n\n아래 게시글을 분석해주세요:\n\n${aiInput.slice(0, 2500)}`;
 
     const aiRes = await fetch(geminiUrl, {
       method: 'POST',
