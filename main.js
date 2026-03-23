@@ -249,8 +249,25 @@ function showToast(msg) {
 // ─────────────────────────────────────────────
 async function loadRole() {
   if (!sb || !S.user) return;
-  const { data } = await sb.from('users').select('role').eq('id', S.user.id).single();
-  S.role = data?.role || 'user';
+  const { data } = await sb.from('profiles').select('role, status').eq('id', S.user.id).maybeSingle()
+    .catch(() => ({ data: null }));
+  // profiles 테이블 없으면 users 테이블로 폴백
+  if (data) {
+    S.role = data.role || 'user';
+    S.userStatus = data.status || 'active';
+  } else {
+    const { data: ud } = await sb.from('users').select('role').eq('id', S.user.id).maybeSingle()
+      .catch(() => ({ data: null }));
+    S.role = ud?.role || 'user';
+    S.userStatus = 'active';
+  }
+  // 정지된 유저는 강제 로그아웃
+  if (S.userStatus === 'banned') {
+    await sb.auth.signOut().catch(() => {});
+    S.user = null; S.role = null; S.userStatus = null;
+    alert('계정이 정지되었습니다. 관리자에게 문의하세요.');
+    window.location.hash = '#/';
+  }
 }
 
 async function doLogin(email, password) {
@@ -1519,12 +1536,13 @@ async function renderAdminContent(myToken) {
   try {
     if (S.renderToken !== myToken) return;
     const tabsHtml = `
-    <div class="page-header"><h1>관리자 대시보드</h1><p>판매자 승인, 게시글, 카테고리 관리</p></div>
+    <div class="page-header"><h1>관리자 대시보드</h1><p>판매자 승인, 게시글, 카테고리, 회원 관리</p></div>
     <div class="admin-tabs">
       <button class="admin-tab${S.adminTab === 'sellers' ? ' active' : ''}" onclick="switchTab('sellers')">판매자 승인</button>
       <button class="admin-tab${S.adminTab === 'posts' ? ' active' : ''}" onclick="switchTab('posts')">게시글 승인</button>
       <button class="admin-tab${S.adminTab === 'all' ? ' active' : ''}" onclick="switchTab('all')">전체 게시글</button>
       <button class="admin-tab${S.adminTab === 'categories' ? ' active' : ''}" onclick="switchTab('categories')">카테고리 관리</button>
+      <button class="admin-tab${S.adminTab === 'members' ? ' active' : ''}" onclick="switchTab('members')">👥 회원 관리</button>
     </div>
     <div id="admin-body"></div>`;
     if (S.renderToken !== myToken) return;
@@ -1543,7 +1561,7 @@ async function switchTab(tab) {
   S.adminTab = tab;
   const tabs = document.querySelectorAll('.admin-tab');
   tabs.forEach(t => t.classList.remove('active'));
-  tabs[['sellers', 'posts', 'all', 'categories'].indexOf(tab)]?.classList.add('active');
+  tabs[['sellers', 'posts', 'all', 'categories', 'members'].indexOf(tab)]?.classList.add('active');
   const tabToken = bumpRenderToken();
   try {
     await renderAdminTab(tabToken);
@@ -1609,6 +1627,84 @@ async function renderAdminTab(myToken) {
               <tbody>${tableRows}</tbody>
             </table>`
         }`;
+    } else if (S.adminTab === 'members') {
+      // ── 회원 관리 탭 ───────────────────────────────────────────────────────
+      const users = await fetchAdminUsers();
+      if (S.renderToken !== myToken) return;
+
+      const roleFilterOpts = `
+        <option value="">전체 회원</option>
+        <option value="admin">관리자</option>
+        <option value="seller">판매자</option>
+        <option value="user">일반 유저</option>
+        <option value="banned">정지된 유저</option>`;
+
+      const rows = users.length === 0 ? '' : users.map(u => {
+        const isBanned = u.status === 'banned';
+        const isAdmin  = u.role === 'admin';
+        const isSeller = u.role === 'seller';
+        const roleBadge = isAdmin
+          ? `<span class="badge badge-approved">관리자</span>`
+          : isSeller
+            ? `<span class="badge" style="background:#e0f2fe;color:#0369a1;">판매자</span>`
+            : `<span class="badge" style="background:#f3f4f6;color:#374151;">일반</span>`;
+        const statusBadge = isBanned
+          ? `<span class="badge badge-pending">정지됨</span>`
+          : `<span class="badge badge-approved">정상</span>`;
+        const lastSignIn = u.last_sign_in_at ? formatDate(u.last_sign_in_at) : '없음';
+        return `
+          <tr data-email="${esc((u.email || '').toLowerCase())}"
+              data-role="${esc(u.role || 'user')}"
+              data-status="${esc(u.status || 'active')}">
+            <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(u.email || '')}">
+              ${esc(u.email || u.id.slice(0, 8))}
+            </td>
+            <td>${formatDate(u.created_at)}</td>
+            <td>${lastSignIn}</td>
+            <td style="text-align:center;">${u.post_count ?? 0}</td>
+            <td style="text-align:center;">${u.comment_count ?? 0}</td>
+            <td>${roleBadge}</td>
+            <td>${statusBadge}</td>
+            <td>
+              <div class="btn-row">
+                <button class="btn btn-sm ${isBanned ? 'btn-success' : 'btn-danger'}"
+                  onclick="toggleUserBan('${esc(u.id)}', ${isBanned})">
+                  ${isBanned ? '정지 해제' : '활동 정지'}
+                </button>
+              </div>
+            </td>
+          </tr>`;
+      }).join('');
+
+      body.innerHTML = `
+        <div style="margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+          <input type="text" id="member-search" class="form-input" style="width:220px;padding:6px 8px;"
+            placeholder="이메일 / 닉네임 검색..." oninput="memberFilterTable()">
+          <select id="member-role-filter" class="form-input" style="width:150px;padding:6px 8px;"
+            onchange="memberFilterTable()">${roleFilterOpts}</select>
+          <span id="member-count-label" style="font-size:13px;color:#666;margin-left:4px;">
+            총 <strong>${users.length}</strong>명
+          </span>
+        </div>
+        ${users.length === 0
+          ? `<div class="empty-state"><div class="empty-emoji">👥</div><h3>회원이 없습니다</h3></div>`
+          : `<div style="overflow-x:auto;">
+              <table class="admin-table" id="admin-member-table">
+                <thead><tr>
+                  <th>이메일</th>
+                  <th>가입일</th>
+                  <th>최종 접속</th>
+                  <th style="text-align:center;">글 수</th>
+                  <th style="text-align:center;">댓글 수</th>
+                  <th>권한</th>
+                  <th>상태</th>
+                  <th>액션</th>
+                </tr></thead>
+                <tbody>${rows}</tbody>
+              </table>
+            </div>`
+        }`;
+
     } else if (S.adminTab === 'categories') {
       const { data } = await withTimeout(sb.from('categories').select('*').order('sort_order', { ascending: true }), 25000);
       if (S.renderToken !== myToken) return;
@@ -1911,6 +2007,85 @@ async function deletePost(postId) {
     showToast(e?.message || String(e));
   }
 }
+
+// ─────────────────────────────────────────────
+// ADMIN: 회원 관리 (fetch / ban / filter)
+// ─────────────────────────────────────────────
+
+// profiles 테이블 + posts/comments 집계 조인으로 회원 목록 가져오기
+async function fetchAdminUsers() {
+  // profiles 테이블: id, email, role, status, created_at, last_sign_in_at
+  const { data: profiles, error } = await withTimeout(
+    sb.from('profiles')
+      .select('id, email, role, status, created_at, last_sign_in_at')
+      .order('created_at', { ascending: false }),
+    25000
+  );
+  if (error) throw error;
+  const list = profiles || [];
+
+  // 게시글 수 집계 (user_id 기준)
+  const { data: postCounts } = await withTimeout(
+    sb.from('posts').select('user_id').neq('user_id', null),
+    20000
+  ).catch(() => ({ data: [] }));
+
+  // 댓글 수 집계 (user_id 기준)
+  const { data: commentCounts } = await withTimeout(
+    sb.from('comments').select('user_id').neq('user_id', null),
+    20000
+  ).catch(() => ({ data: [] }));
+
+  // 카운트 맵 생성
+  const postMap = {};
+  (postCounts || []).forEach(r => { postMap[r.user_id] = (postMap[r.user_id] || 0) + 1; });
+  const commentMap = {};
+  (commentCounts || []).forEach(r => { commentMap[r.user_id] = (commentMap[r.user_id] || 0) + 1; });
+
+  return list.map(u => ({
+    ...u,
+    post_count: postMap[u.id] || 0,
+    comment_count: commentMap[u.id] || 0,
+  }));
+}
+
+// 유저 활동 정지 / 해제 (profiles.status 컬럼 업데이트)
+window.toggleUserBan = async function (userId, currentlyBanned) {
+  const action = currentlyBanned ? '정지를 해제' : '활동을 정지';
+  if (!confirm(`이 회원의 ${action}하시겠습니까?`)) return;
+  const newStatus = currentlyBanned ? 'active' : 'banned';
+  try {
+    const { error } = await sb.from('profiles').update({ status: newStatus }).eq('id', userId);
+    if (error) throw error;
+    showToast(`회원 상태가 '${newStatus === 'banned' ? '정지됨' : '정상'}'으로 변경되었습니다.`);
+    await renderAdminTab(bumpRenderToken());
+  } catch (e) {
+    console.error('[toggleUserBan]', e);
+    showToast('상태 변경 실패: ' + (e?.message || String(e)));
+  }
+};
+
+// 회원 테이블 실시간 필터링
+window.memberFilterTable = function () {
+  const keyword    = (document.getElementById('member-search')?.value || '').toLowerCase().trim();
+  const roleFilter = (document.getElementById('member-role-filter')?.value || '').toLowerCase();
+  const rows       = document.querySelectorAll('#admin-member-table tbody tr');
+  let visible = 0;
+  rows.forEach(tr => {
+    const email  = tr.dataset.email  || '';
+    const role   = tr.dataset.role   || 'user';
+    const status = tr.dataset.status || 'active';
+    const matchWord = !keyword || email.includes(keyword);
+    const matchRole = !roleFilter
+      || roleFilter === role
+      || (roleFilter === 'banned' && status === 'banned');
+    const show = matchWord && matchRole;
+    tr.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  const label = document.getElementById('member-count-label');
+  if (label) label.innerHTML = `총 <strong>${visible}</strong>명 표시 중`;
+};
 
 // ─────────────────────────────────────────────
 // ADMIN: 전체선택 / 필터 / 일괄삭제
