@@ -1667,18 +1667,13 @@ async function renderAdminTab(myToken) {
         const statusBadge = isBanned
           ? `<span class="badge badge-pending">정지됨</span>`
           : `<span class="badge badge-approved">정상</span>`;
-        const lastSignIn = u.last_sign_in_at ? formatDate(u.last_sign_in_at) : '없음';
         return `
           <tr data-email="${esc((u.email || '').toLowerCase())}"
               data-role="${esc(u.role || 'user')}"
               data-status="${esc(u.status || 'active')}">
-            <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(u.email || '')}">
+            <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(u.email || '')}">
               ${esc(u.email || u.id.slice(0, 8))}
             </td>
-            <td>${formatDate(u.created_at)}</td>
-            <td>${lastSignIn}</td>
-            <td style="text-align:center;">${u.post_count ?? 0}</td>
-            <td style="text-align:center;">${u.comment_count ?? 0}</td>
             <td>${roleBadge}</td>
             <td>${statusBadge}</td>
             <td>
@@ -1708,10 +1703,6 @@ async function renderAdminTab(myToken) {
               <table class="admin-table" id="admin-member-table">
                 <thead><tr>
                   <th>이메일</th>
-                  <th>가입일</th>
-                  <th>최종 접속</th>
-                  <th style="text-align:center;">글 수</th>
-                  <th style="text-align:center;">댓글 수</th>
                   <th>권한</th>
                   <th>상태</th>
                   <th>액션</th>
@@ -2030,11 +2021,11 @@ async function deletePost(postId) {
 
 // users 테이블 + posts/comments 집계 조인으로 회원 목록 가져오기
 async function fetchAdminUsers() {
-  // users 테이블: id, email, role, status, created_at
+  // users 테이블: id, email, role, status
   const { data: users, error } = await withTimeout(
     sb.from('users')
-      .select('id, email, role, status, created_at')
-      .order('created_at', { ascending: false }),
+      .select('id, email, role, status')
+      .order('email', { ascending: true }),
     25000
   );
   if (error) throw error;
