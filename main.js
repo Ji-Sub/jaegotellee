@@ -249,39 +249,43 @@ function showToast(msg) {
 // ─────────────────────────────────────────────
 async function loadRole() {
   if (!sb || !S.user) return;
-
-  // users 테이블에서 role, status 조회 (실제 DB 구조)
-  const { data: ud, error: ue } = await sb
-    .from('users')
-    .select('role, status')
-    .eq('id', S.user.id)
-    .maybeSingle()
-    .catch(e => ({ data: null, error: e }));
-
-  if (ud) {
-    S.role = ud.role || 'user';
-    S.userStatus = ud.status || 'active';
-    console.log('[loadRole] users table →', S.role, S.userStatus);
-  } else {
-    // users 테이블 조회 실패 시 profiles 테이블 폴백
-    console.warn('[loadRole] users table miss, trying profiles:', ue?.message);
-    const { data: pd } = await sb
-      .from('profiles')
+  try {
+    // 1. users 테이블 먼저 확인 (id 또는 email 기준)
+    const { data: ud, error: ue } = await sb
+      .from('users')
       .select('role, status')
       .eq('id', S.user.id)
-      .maybeSingle()
-      .catch(() => ({ data: null }));
-    S.role = pd?.role || 'user';
-    S.userStatus = pd?.status || 'active';
-    console.log('[loadRole] profiles table →', S.role, S.userStatus);
-  }
+      .maybeSingle();
 
-  // 정지된 유저는 강제 로그아웃
-  if (S.userStatus === 'banned') {
-    await sb.auth.signOut().catch(() => {});
-    S.user = null; S.role = null; S.userStatus = null;
-    alert('계정이 정지되었습니다. 관리자에게 문의하세요.');
-    window.location.hash = '#/';
+    if (!ue && ud) {
+      S.role       = ud.role   || 'user';
+      S.userStatus = ud.status || 'active';
+      console.log('[loadRole] users table → role:', S.role, '| status:', S.userStatus);
+    } else {
+      // 2. users 미스 → profiles 폴백
+      if (ue) console.warn('[loadRole] users query error:', ue.message);
+      const { data: pd, error: pe } = await sb
+        .from('profiles')
+        .select('role, status')
+        .eq('id', S.user.id)
+        .maybeSingle();
+      if (pe) console.warn('[loadRole] profiles query error:', pe.message);
+      S.role       = pd?.role   || 'user';
+      S.userStatus = pd?.status || 'active';
+      console.log('[loadRole] profiles fallback → role:', S.role, '| status:', S.userStatus);
+    }
+
+    // 정지된 유저는 강제 로그아웃
+    if (S.userStatus === 'banned') {
+      try { await sb.auth.signOut(); } catch (_) {}
+      S.user = null; S.role = null; S.userStatus = null;
+      alert('계정이 정지되었습니다. 관리자에게 문의하세요.');
+      window.location.hash = '#/';
+    }
+  } catch (err) {
+    console.error('[loadRole] 에러:', err);
+    S.role = 'user';
+    S.userStatus = 'active';
   }
 }
 
@@ -2052,16 +2056,24 @@ async function fetchAdminUsers() {
   }
 
   // 게시글 수 집계 (user_id 기준)
-  const { data: postCounts } = await withTimeout(
-    sb.from('posts').select('user_id').neq('user_id', null),
-    20000
-  ).catch(() => ({ data: [] }));
+  let postCounts = [];
+  try {
+    const { data: pc } = await withTimeout(
+      sb.from('posts').select('user_id').neq('user_id', null),
+      20000
+    );
+    postCounts = pc || [];
+  } catch (_) {}
 
   // 댓글 수 집계 (user_id 기준)
-  const { data: commentCounts } = await withTimeout(
-    sb.from('comments').select('user_id').neq('user_id', null),
-    20000
-  ).catch(() => ({ data: [] }));
+  let commentCounts = [];
+  try {
+    const { data: cc } = await withTimeout(
+      sb.from('comments').select('user_id').neq('user_id', null),
+      20000
+    );
+    commentCounts = cc || [];
+  } catch (_) {}
 
   // 카운트 맵 생성
   const postMap = {};
