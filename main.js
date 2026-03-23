@@ -249,18 +249,33 @@ function showToast(msg) {
 // ─────────────────────────────────────────────
 async function loadRole() {
   if (!sb || !S.user) return;
-  const { data } = await sb.from('profiles').select('role, status').eq('id', S.user.id).maybeSingle()
-    .catch(() => ({ data: null }));
-  // profiles 테이블 없으면 users 테이블로 폴백
-  if (data) {
-    S.role = data.role || 'user';
-    S.userStatus = data.status || 'active';
+
+  // users 테이블에서 role, status 조회 (실제 DB 구조)
+  const { data: ud, error: ue } = await sb
+    .from('users')
+    .select('role, status')
+    .eq('id', S.user.id)
+    .maybeSingle()
+    .catch(e => ({ data: null, error: e }));
+
+  if (ud) {
+    S.role = ud.role || 'user';
+    S.userStatus = ud.status || 'active';
+    console.log('[loadRole] users table →', S.role, S.userStatus);
   } else {
-    const { data: ud } = await sb.from('users').select('role').eq('id', S.user.id).maybeSingle()
+    // users 테이블 조회 실패 시 profiles 테이블 폴백
+    console.warn('[loadRole] users table miss, trying profiles:', ue?.message);
+    const { data: pd } = await sb
+      .from('profiles')
+      .select('role, status')
+      .eq('id', S.user.id)
+      .maybeSingle()
       .catch(() => ({ data: null }));
-    S.role = ud?.role || 'user';
-    S.userStatus = 'active';
+    S.role = pd?.role || 'user';
+    S.userStatus = pd?.status || 'active';
+    console.log('[loadRole] profiles table →', S.role, S.userStatus);
   }
+
   // 정지된 유저는 강제 로그아웃
   if (S.userStatus === 'banned') {
     await sb.auth.signOut().catch(() => {});
@@ -2012,17 +2027,29 @@ async function deletePost(postId) {
 // ADMIN: 회원 관리 (fetch / ban / filter)
 // ─────────────────────────────────────────────
 
-// profiles 테이블 + posts/comments 집계 조인으로 회원 목록 가져오기
+// users 테이블 + posts/comments 집계 조인으로 회원 목록 가져오기
 async function fetchAdminUsers() {
-  // profiles 테이블: id, email, role, status, created_at, last_sign_in_at
-  const { data: profiles, error } = await withTimeout(
-    sb.from('profiles')
+  // users 테이블: id, email, role, status, created_at, last_sign_in_at
+  let list = [];
+  const { data: users, error } = await withTimeout(
+    sb.from('users')
       .select('id, email, role, status, created_at, last_sign_in_at')
       .order('created_at', { ascending: false }),
     25000
   );
-  if (error) throw error;
-  const list = profiles || [];
+  if (!error && users && users.length > 0) {
+    list = users;
+  } else {
+    // users 실패 시 profiles 폴백
+    const { data: profiles, error: pe } = await withTimeout(
+      sb.from('profiles')
+        .select('id, email, role, status, created_at, last_sign_in_at')
+        .order('created_at', { ascending: false }),
+      25000
+    );
+    if (pe) throw pe;
+    list = profiles || [];
+  }
 
   // 게시글 수 집계 (user_id 기준)
   const { data: postCounts } = await withTimeout(
@@ -2055,7 +2082,12 @@ window.toggleUserBan = async function (userId, currentlyBanned) {
   if (!confirm(`이 회원의 ${action}하시겠습니까?`)) return;
   const newStatus = currentlyBanned ? 'active' : 'banned';
   try {
-    const { error } = await sb.from('profiles').update({ status: newStatus }).eq('id', userId);
+    // users 테이블 우선, 없으면 profiles 폴백
+    let error;
+    ({ error } = await sb.from('users').update({ status: newStatus }).eq('id', userId));
+    if (error) {
+      ({ error } = await sb.from('profiles').update({ status: newStatus }).eq('id', userId));
+    }
     if (error) throw error;
     showToast(`회원 상태가 '${newStatus === 'banned' ? '정지됨' : '정상'}'으로 변경되었습니다.`);
     await renderAdminTab(bumpRenderToken());
