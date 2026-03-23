@@ -2509,6 +2509,3 @@ async function init() {
 }
 
 init();
-
-
-
