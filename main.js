@@ -407,8 +407,16 @@ async function fetchAllPostsAdmin() {
 
 async function allPostsHasUpvote(postId) {
   if (!S.user) return false;
-  const { data } = await sb.from('user_upvotes').select('id').eq('post_id', postId).eq('user_id', S.user.id).single();
-  return !!data;
+  try {
+    const { data } = await sb.from('user_upvotes')
+      .select('id')
+      .eq('post_id', postId)
+      .eq('user_id', S.user.id)
+      .maybeSingle();
+    return !!data;
+  } catch (_) {
+    return false;
+  }
 }
 
 window.toggleUpvote = async function (id, elId) {
