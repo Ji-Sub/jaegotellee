@@ -1721,7 +1721,30 @@ async function renderAdminTab(myToken) {
       function buildParentOpts(list, depth = 0, ancestors = []) { let opts = ''; list.forEach(c => { const prefix = '\u00a0'.repeat(depth * 4); opts += `<option value="${c.id}">${prefix}${c.name}${ancestors.length > 0 ? ' (' + ancestors[ancestors.length - 1] + ' 하위)' : ''}</option>`; if (c.subs && c.subs.length > 0) { opts += buildParentOpts(c.subs, depth + 1, [...ancestors, c.name]); } }); return opts; }
       const parentOpts = buildParentOpts(rootTree);
       const depthLabels = ['대분류', '중분류', '소분류', '하위분류'];
-      function buildTableRows(list, depth = 0) { let rows = ''; list.forEach(c => { const indent = '\u00a0\u00a0'.repeat(depth * 2); const depthLabel = depthLabels[depth] || `${depth + 1}단계`; const arrow = depth > 0 ? '↳ ' : ''; rows += `<tr><td>${c.sort_order || 0}</td><td><span style="color: ${depth === 0 ? '#333' : depth === 1 ? '#666' : '#999'}; font-size: ${depth === 0 ? '13px' : '12px'}">${depthLabel}</span></td><td>${indent}${arrow}${esc(c.name)}</td><td>${esc(c.icon || '')}</td><td><button class="btn btn-danger btn-sm" onclick="deleteAdminCategory('${c.id}')">삭제</button></td></tr>`; if (c.subs && c.subs.length > 0) rows += buildTableRows(c.subs, depth + 1); }); return rows; }
+      function buildTableRows(list, depth = 0) {
+        let rows = '';
+        list.forEach(c => {
+          const indent = '\u00a0\u00a0'.repeat(depth * 2);
+          const depthLabel = depthLabels[depth] || `${depth + 1}단계`;
+          const arrow = depth > 0 ? '↳ ' : '';
+          const nameEsc = esc(c.name);
+          const iconEsc = esc(c.icon || '');
+          rows += `<tr id="cat-row-${c.id}">
+            <td>${c.sort_order || 0}</td>
+            <td><span style="color:${depth === 0 ? '#333' : depth === 1 ? '#666' : '#999'};font-size:${depth === 0 ? '13px' : '12px'}">${depthLabel}</span></td>
+            <td id="cat-name-cell-${c.id}">${indent}${arrow}${nameEsc}</td>
+            <td id="cat-icon-cell-${c.id}">${iconEsc}</td>
+            <td>
+              <div class="btn-row" id="cat-actions-${c.id}">
+                <button class="btn btn-primary btn-sm" onclick="editAdminCategory('${c.id}','${nameEsc}','${iconEsc}')">수정</button>
+                <button class="btn btn-danger btn-sm" onclick="deleteAdminCategory('${c.id}')">삭제</button>
+              </div>
+            </td>
+          </tr>`;
+          if (c.subs && c.subs.length > 0) rows += buildTableRows(c.subs, depth + 1);
+        });
+        return rows;
+      }
       body.innerHTML = `<form id="admin-category-form" class="admin-category-form" style="margin-bottom: 20px; display:flex; gap:10px; flex-wrap:wrap; align-items:center; background:#f9f9f9; padding:15px; border-radius:8px;" action="#" method="post" novalidate><input type="text" id="new-cat-name" name="new_cat_name" placeholder="카테고리명 (새 카테고리)" class="form-input" style="width:180px;" autocomplete="off" /><input type="number" id="new-cat-sort" name="new_cat_sort" placeholder="순서(숫자)" class="form-input" style="width:100px;" value="1" /><input type="text" id="new-cat-icon" name="new_cat_icon" placeholder="아이콘(예:🍎)" class="form-input" style="width:120px;" autocomplete="off" /><select id="new-cat-parent" name="new_cat_parent" class="form-input" style="width:220px;" aria-label="상위 카테고리"><option value="">(최상위 대분류)</option>${parentOpts}</select><button type="submit" id="btn-add-admin-category" class="btn btn-primary btn-sm">추가</button></form><table class="admin-table"><thead><tr><th>순서</th><th>유형</th><th>이름</th><th>아이콘</th><th>액션</th></tr></thead><tbody>${buildTableRows(rootTree)}</tbody></table>`;
     }
   } catch (e) {
@@ -1905,6 +1928,42 @@ window.deleteAdminCategory = async function (id) {
   } catch (e) {
     console.error('[deleteAdminCategory]', e);
     showToast('삭제 실패: ' + (e?.message || String(e)));
+  }
+};
+
+// 카테고리 인라인 수정: 행을 편집 모드로 전환
+window.editAdminCategory = function (id, currentName, currentIcon) {
+  const nameCell    = document.getElementById(`cat-name-cell-${id}`);
+  const iconCell    = document.getElementById(`cat-icon-cell-${id}`);
+  const actionsCell = document.getElementById(`cat-actions-${id}`);
+  if (!nameCell || !iconCell || !actionsCell) return;
+
+  // 이름 셀: 현재 텍스트에서 indent·화살표 제거 후 input으로 교체
+  const plainName = currentName.replace(/[\u00a0↳ ]/g, '').trim();
+  nameCell.innerHTML = `<input id="cat-edit-name-${id}" class="form-input" style="width:140px;padding:4px 6px;" value="${esc(plainName)}">`;
+  iconCell.innerHTML = `<input id="cat-edit-icon-${id}" class="form-input" style="width:70px;padding:4px 6px;" value="${esc(currentIcon)}">`;
+  actionsCell.innerHTML = `
+    <div class="btn-row">
+      <button class="btn btn-success btn-sm" onclick="saveAdminCategory('${id}')">저장</button>
+      <button class="btn btn-ghost btn-sm" onclick="renderAdminTab(bumpRenderToken())">취소</button>
+    </div>`;
+};
+
+// 카테고리 인라인 수정: Supabase 저장
+window.saveAdminCategory = async function (id) {
+  if (S.isDemo) { showToast('데모 모드 제한'); return; }
+  const nameVal = document.getElementById(`cat-edit-name-${id}`)?.value.trim();
+  const iconVal = document.getElementById(`cat-edit-icon-${id}`)?.value.trim();
+  if (!nameVal) { showToast('카테고리 이름을 입력해 주세요.'); return; }
+  try {
+    const { error } = await sb.from('categories').update({ name: nameVal, icon: iconVal || null }).eq('id', id);
+    if (error) throw error;
+    showToast('카테고리가 수정되었습니다.');
+    await loadCategories();
+    await renderAdminTab(bumpRenderToken());
+  } catch (e) {
+    console.error('[saveAdminCategory]', e);
+    showToast('수정 실패: ' + (e?.message || String(e)));
   }
 };
 
