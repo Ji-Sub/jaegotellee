@@ -1,6 +1,6 @@
 // functions/api/band.js
-// 밴드(band.us) 게시글 URL에서 이미지(최대3)·본문을 추출하고 Gemini로 상품 정보를 구조화해 반환
-// 환경변수: GOOGLE_GENERATIVE_AI_API_KEY (Cloudflare Pages → Settings → Environment variables)
+// 밴드(band.us) 게시글 URL에서 이미지(최대3)·본문을 추출하고 OpenAI gpt-4o-mini로 상품 정보를 구조화해 반환
+// 환경변수: OPENAI_API_KEY (Cloudflare Pages → Settings → Environment variables)
 
 export async function onRequest(context) {
   const requestUrl = new URL(context.request.url);
@@ -86,91 +86,72 @@ export async function onRequest(context) {
     return json({ ...baseResult, ai_skipped: '분석할 텍스트 없음 (og:title·description·본문 모두 비어있음)' });
   }
 
-  // ── 4. Gemini API로 상품 정보 구조화 ────────────────────────────────────
-  const geminiKey = context.env?.GOOGLE_GENERATIVE_AI_API_KEY;
-  if (!geminiKey) {
-    return json({ ...baseResult, ai_skipped: 'GOOGLE_GENERATIVE_AI_API_KEY 환경변수가 설정되지 않았습니다.' });
+  // ── 4. OpenAI gpt-4o-mini로 상품 정보 구조화 ─────────────────────────────
+  const openaiKey = context.env?.OPENAI_API_KEY;
+  if (!openaiKey) {
+    return json({ ...baseResult, ai_skipped: 'OPENAI_API_KEY 환경변수가 설정되지 않았습니다.' });
   }
 
-  // 뚝형 스타일 프롬프트 ─────────────────────────────────────────────────
-  const SYSTEM_PROMPT = `당신은 한국 농수산물 직거래 밴드 게시글 분석 전문가입니다.
-아래 게시글 텍스트에서 상품 정보를 추출해 반드시 아래 JSON 형식으로만 응답하세요.
-
-{
-  "name": "최적화 제목 한 줄 (상품명 + 규격/중량 + 배송비 조건을 조합, 예: [무료배송] 제주 황금향 5kg, [항공직송] 무지개 망고 4kg (착불))",
-  "price": "최저 가격 숫자만 (배송비 제외, 콤마 포함, 원 단위 표시, 예: 35,000원 또는 3,500원/kg)",
-  "shipping": "배송비 정보 (예: 무료, 3,000원, 착불, 5만원 이상 무료)",
-  "description": "반드시 첫 줄에 name과 동일한 제목을 쓰고, 빈 줄 한 줄 후 아래 형식으로 상세 내용 작성 (400자 이내)"
-}
-
-description 형식 예시 (이 형식을 반드시 따르세요):
-[무료배송] 제주 황금향 5kg
-
-🍊 상품: 제주 황금향
-📦 규격: 5kg / 10kg 선택 가능
-💰 가격: 35,000원 (5kg 기준)
-🚚 배송: 무료 (전국)
-📝 특징:
-- 당도 13브릭스 이상 보장
-- 당일 수확 당일 발송
-- 산지 직송 (제주 서귀포)
-📞 주문/문의: 댓글 또는 쪽지로 연락주세요
-
-name 작성 규칙:
-- 특이사항(항공직송/유기농/무농약/국내산 등)이 있으면 앞에 [태그] 형태로 붙이기
-- 중량/규격은 반드시 포함
-- 무료배송이면 (무료배송) 또는 [무료배송] 형태로 표시
-- 착불이면 끝에 (착불) 표시
-- 30자를 넘지 않도록 간결하게
-
-JSON만 응답하고 다른 텍스트는 절대 포함하지 마세요.`;
+  const postText = aiInput.slice(0, 2500);
 
   try {
-    // gemini-2.0-flash: 최신 모델 (404 방지)
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`;
-
-    const userContent = `${SYSTEM_PROMPT}\n\n---\n\n아래 게시글을 분석해주세요:\n\n${aiInput.slice(0, 2500)}`;
-
-    const aiRes = await fetch(geminiUrl, {
+    const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-goog-api-key': geminiKey, // URL 쿼리 파라미터와 이중 인증 (호환성)
+        'Authorization': `Bearer ${openaiKey}`,
       },
       body: JSON.stringify({
-        contents: [
-          { role: 'user', parts: [{ text: userContent }] },
+        model: 'gpt-4o-mini',
+        response_format: { type: 'json_object' },
+        messages: [
+          {
+            role: 'system',
+            content: `너는 밴드 도매글에서 상품 정보를 추출하는 AI야. 반드시 아래 형식의 JSON으로만 응답해.
+{
+  "name": "[상품명] [규격]",
+  "price": "숫자만 (예: 35000)",
+  "description": "✅ [상품명] [규격] ➡️ [가격]원 ([배송비])\\n\\n(여기에 핵심 특징 3줄 요약)"
+}`,
+          },
+          {
+            role: 'user',
+            content: `다음 밴드 게시글을 분석해줘:\n\n${postText}`,
+          },
         ],
-        generationConfig: {
-          responseMimeType: 'application/json',
-          temperature: 0.2,
-          maxOutputTokens: 700,
-        },
       }),
     });
 
+    const aiJson = await aiRes.json();
+
     if (!aiRes.ok) {
-      const errText = await aiRes.text().catch(() => '');
-      console.error('[Gemini API error]', aiRes.status, errText);
+      const errMsg = aiJson.error?.message || aiJson.message || `HTTP ${aiRes.status}`;
+      console.error('[band.js] OpenAI API error:', aiRes.status, errMsg);
       return json({
         ...baseResult,
-        ai_skipped: `Gemini 오류 (${aiRes.status}): ${errText.slice(0, 300)}`,
+        ai_error: true,
+        ai_skipped: `OpenAI 오류: ${errMsg}`,
       });
     }
 
-    const aiData = await aiRes.json();
-    const raw = aiData.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (!raw) return json({ ...baseResult, ai_skipped: 'AI 응답이 비어있습니다.' });
-
-    let aiParsed;
-    try { aiParsed = JSON.parse(raw); } catch (_) {
-      return json({ ...baseResult, ai_skipped: 'AI 응답 파싱 실패', ai_raw: raw });
+    const raw = aiJson.choices?.[0]?.message?.content;
+    if (!raw) {
+      return json({ ...baseResult, ai_error: true, ai_skipped: 'AI 응답이 비어있습니다.' });
     }
 
-    return json({ ...baseResult, ai: aiParsed });
-  } catch (err) {
-    console.error('[Gemini fetch error]', err);
-    return json({ ...baseResult, ai_skipped: `AI 호출 오류: ${err.message}` });
+    const parsedData = JSON.parse(raw);
+    return json({ ...baseResult, ai: parsedData });
+  } catch (aiErr) {
+    console.error('[band.js] AI 분석 실패:', aiErr.message);
+    return json({
+      success: true,
+      ai_error: true,
+      image_url: images[0] || null,
+      images,
+      title: ogTitle,
+      body_text: bodyText,
+      ai: null,
+    });
   }
 }
 

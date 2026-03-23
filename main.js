@@ -2324,21 +2324,20 @@ window.fetchBandPost = async function () {
       if (descEl  && data.ai.description) descEl.value  = data.ai.description;
       const imgCount = proxiedImages.length;
       showToast(`✅ AI 분석 완료! 이미지 ${imgCount}개, 내용을 확인 후 등록하세요.`);
+    } else if (data.ai_error) {
+      showToast('⚠️ AI 분석 한도 초과: 이미지만 자동으로 불러옵니다.');
     } else {
       // AI 없이 기본 정보만 채우기
       if (titleEl && !titleEl.value.trim() && data.title) titleEl.value = data.title;
       const skipped = data.ai_skipped || '원인 불명';
-      // 이유별 안내 메시지
-      if (skipped.includes('GOOGLE_GENERATIVE_AI_API_KEY')) {
-        showToast('⚠️ Gemini API 키 미설정 — Cloudflare Pages 환경변수에 GOOGLE_GENERATIVE_AI_API_KEY를 추가해주세요.');
+      if (skipped.includes('OPENAI_API_KEY')) {
+        showToast('⚠️ OpenAI API 키 미설정 — Cloudflare Pages 환경변수에 OPENAI_API_KEY를 추가해주세요.');
       } else if (skipped.includes('텍스트 없음') || skipped.includes('body_too_short')) {
-        showToast('⚠️ AI 분석 실패: 밴드 게시글에서 본문을 가져오지 못했습니다. (' + skipped + ')');
-      } else if (skipped.includes('Gemini 오류')) {
-        showToast('⚠️ AI 오류: ' + skipped);
+        showToast('⚠️ AI 분석 실패: 밴드 게시글에서 본문을 가져오지 못했습니다.');
       } else {
         showToast('⚠️ AI 분석 실패: ' + skipped);
       }
-      console.warn('[fetchBandPost] ai_skipped:', skipped, '| body_text:', data.body_text?.slice(0, 100));
+      console.warn('[fetchBandPost] ai_skipped:', skipped);
     }
   } catch (e) {
     console.error('[fetchBandPost]', e);
