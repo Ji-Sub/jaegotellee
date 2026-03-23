@@ -1571,7 +1571,44 @@ async function renderAdminTab(myToken) {
     } else if (S.adminTab === 'all') {
       const data = await fetchAllPostsAdmin();
       if (S.renderToken !== myToken) return;
-      body.innerHTML = `<div style="margin-bottom: 20px; display:flex; justify-content: flex-end;"><button id="btn-deep-scrape" class="btn btn-primary" type="button">🔍 핫딜집 딥크롤링 실행</button></div>${data.length === 0 ? `<div class="empty-state" ><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3></div>` : `<table class="admin-table"><thead><tr><th>제목</th><th>카테고리</th><th>상태</th><th>조회</th><th>액션</th></tr></thead><tbody>${data.map(p => `<tr><td>${esc(p.title)}</td><td><select class="form-input" style="width:140px; padding:4px;" onchange="updatePostCategory('${p.id}', this.value)">${getCategoryOptionsHtml(p.category)}</select></td><td><span class="badge ${p.approved ? 'badge-approved' : 'badge-pending'}">${p.approved ? '승인됨' : '대기중'}</span></td><td>${p.views || 0}</td><td><div class="btn-row"><button class="btn btn-danger btn-sm" onclick="deletePost('${p.id}')">삭제</button></div></td></tr>`).join('')}</table>`}`;
+
+      // 카테고리 목록 추출 (필터 select 옵션)
+      const catSet = new Set(data.map(p => p.category).filter(Boolean));
+      const catFilterOpts = ['<option value="">전체 카테고리</option>',
+        ...[...catSet].sort().map(c => `<option value="${esc(c)}">${esc(getCatLabel(c))}</option>`)
+      ].join('');
+
+      const tableRows = data.length === 0
+        ? ''
+        : data.map(p => `
+          <tr data-id="${esc(p.id)}" data-title="${esc(p.title.toLowerCase())}" data-cat="${esc(p.category || '')}">
+            <td style="width:36px;text-align:center;"><input type="checkbox" class="admin-row-check" data-id="${esc(p.id)}" onchange="adminUpdateBulkBtn()"></td>
+            <td>${esc(p.title)}</td>
+            <td><select class="form-input" style="width:140px;padding:4px;" onchange="updatePostCategory('${p.id}', this.value)">${getCategoryOptionsHtml(p.category)}</select></td>
+            <td><span class="badge ${p.approved ? 'badge-approved' : 'badge-pending'}">${p.approved ? '승인됨' : '대기중'}</span></td>
+            <td>${p.views || 0}</td>
+            <td><div class="btn-row"><button class="btn btn-danger btn-sm" onclick="deletePost('${p.id}')">삭제</button></div></td>
+          </tr>`).join('');
+
+      body.innerHTML = `
+        <div style="margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
+          <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+            <button id="btn-deep-scrape" class="btn btn-primary btn-sm" type="button">🔍 핫딜집 딥크롤링 실행</button>
+            <select id="admin-cat-filter" class="form-input" style="width:160px;padding:6px 8px;" onchange="adminFilterTable()">${catFilterOpts}</select>
+            <input type="text" id="admin-search" class="form-input" style="width:200px;padding:6px 8px;" placeholder="제목 검색..." oninput="adminFilterTable()">
+          </div>
+          <button id="btn-bulk-delete" class="btn btn-danger btn-sm" style="display:none;" onclick="bulkDeletePosts()">🗑 선택 삭제 (<span id="bulk-count">0</span>개)</button>
+        </div>
+        ${data.length === 0
+          ? `<div class="empty-state"><div class="empty-emoji">📭</div><h3>게시글이 없습니다</h3></div>`
+          : `<table class="admin-table" id="admin-all-table">
+              <thead><tr>
+                <th style="width:36px;text-align:center;"><input type="checkbox" id="admin-check-all" onchange="adminToggleAll(this)"></th>
+                <th>제목</th><th>카테고리</th><th>상태</th><th>조회</th><th>액션</th>
+              </tr></thead>
+              <tbody>${tableRows}</tbody>
+            </table>`
+        }`;
     } else if (S.adminTab === 'categories') {
       const { data } = await withTimeout(sb.from('categories').select('*').order('sort_order', { ascending: true }), 25000);
       if (S.renderToken !== myToken) return;
@@ -1874,6 +1911,67 @@ async function deletePost(postId) {
     showToast(e?.message || String(e));
   }
 }
+
+// ─────────────────────────────────────────────
+// ADMIN: 전체선택 / 필터 / 일괄삭제
+// ─────────────────────────────────────────────
+window.adminToggleAll = function (masterCb) {
+  const checks = document.querySelectorAll('.admin-row-check');
+  checks.forEach(cb => {
+    // 숨겨진 행(필터링으로 hidden)은 제외
+    if (cb.closest('tr').style.display !== 'none') {
+      cb.checked = masterCb.checked;
+    }
+  });
+  adminUpdateBulkBtn();
+};
+
+window.adminUpdateBulkBtn = function () {
+  const checked = [...document.querySelectorAll('.admin-row-check')].filter(cb => cb.checked);
+  const btn = document.getElementById('btn-bulk-delete');
+  const countEl = document.getElementById('bulk-count');
+  if (!btn) return;
+  if (checked.length > 0) {
+    btn.style.display = '';
+    if (countEl) countEl.textContent = checked.length;
+  } else {
+    btn.style.display = 'none';
+  }
+};
+
+window.adminFilterTable = function () {
+  const catVal   = (document.getElementById('admin-cat-filter')?.value  || '').toLowerCase();
+  const keyword  = (document.getElementById('admin-search')?.value      || '').toLowerCase().trim();
+  const rows     = document.querySelectorAll('#admin-all-table tbody tr');
+  rows.forEach(tr => {
+    const title = tr.dataset.title || '';
+    const cat   = (tr.dataset.cat  || '').toLowerCase();
+    const matchCat  = !catVal   || cat === catVal;
+    const matchWord = !keyword  || title.includes(keyword);
+    tr.style.display = (matchCat && matchWord) ? '' : 'none';
+  });
+  // 전체선택 체크박스 상태 리셋
+  const masterCb = document.getElementById('admin-check-all');
+  if (masterCb) masterCb.checked = false;
+  adminUpdateBulkBtn();
+};
+
+window.bulkDeletePosts = async function () {
+  const checked = [...document.querySelectorAll('.admin-row-check')].filter(cb => cb.checked);
+  if (checked.length === 0) return;
+  if (!confirm(`선택한 ${checked.length}개의 게시글을 삭제하시겠습니까?`)) return;
+  if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
+  const ids = checked.map(cb => cb.dataset.id);
+  try {
+    const { error } = await sb.from('posts').delete().in('id', ids);
+    if (error) throw error;
+    showToast(`${ids.length}개 게시글이 삭제되었습니다.`);
+    await renderAdminTab(bumpRenderToken());
+  } catch (e) {
+    console.error('[bulkDeletePosts]', e);
+    showToast('삭제 실패: ' + (e?.message || String(e)));
+  }
+};
 
 // ─────────────────────────────────────────────
 // SELLER APPLY
