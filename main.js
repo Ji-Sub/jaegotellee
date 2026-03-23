@@ -2274,11 +2274,11 @@ window.fetchBandPost = async function () {
       return;
     }
 
-    // ── 이미지 처리: 최대 3개, 프록시 URL로 변환 ─────────────────────────
-    const rawImages = data.images && data.images.length > 0
+    // ── 이미지 처리: p-img에는 원본 URL 저장 (DB 저장 후 wsrv.nl/카드에서 fetch 가능) ─
+    const originalImages = data.images && data.images.length > 0
       ? data.images
       : (data.image_url ? [data.image_url] : []);
-    const proxiedImages = rawImages.map(u => `/api/imgproxy?url=${encodeURIComponent(u)}`);
+    const proxiedImages = originalImages.map(u => `/api/imgproxy?url=${encodeURIComponent(u)}`);
 
     const imgEl    = document.getElementById('p-img');
     const pickerEl = document.getElementById('p-img-picker');
@@ -2287,16 +2287,18 @@ window.fetchBandPost = async function () {
     const priceEl  = document.getElementById('p-price');
     const descEl   = document.getElementById('p-desc');
 
-    // 첫 번째 이미지를 기본 선택
-    if (imgEl && proxiedImages.length > 0) imgEl.value = proxiedImages[0];
+    // p-img 입력란에는 원본 URL 저장 (wsrv.nl이 직접 fetch할 수 있어야 함)
+    if (imgEl && originalImages.length > 0) imgEl.value = originalImages[0];
 
-    // 이미지 2개 이상이면 썸네일 피커 표시
+    // 썸네일 피커는 proxied URL로 표시 (브라우저에서 보여주는 용도), 클릭 시 p-img에는 원본 URL
     if (pickerEl) {
-      if (proxiedImages.length > 1) {
+      if (originalImages.length > 1) {
         pickerEl.style.display = 'flex';
-        pickerEl.innerHTML = proxiedImages.map((url, i) => `
-          <img src="${url}"
-            data-url="${url}"
+        pickerEl.innerHTML = originalImages.map((origUrl, i) => {
+          const proxyUrl = `/api/imgproxy?url=${encodeURIComponent(origUrl)}`;
+          return `
+          <img src="${proxyUrl}"
+            data-url="${esc(origUrl)}"
             style="width:70px;height:70px;object-fit:cover;border-radius:8px;cursor:pointer;
                    border:3px solid ${i === 0 ? 'var(--primary, #2563eb)' : '#ddd'};
                    transition:border-color 0.15s;"
@@ -2308,7 +2310,8 @@ window.fetchBandPost = async function () {
                 .forEach(el => el.style.borderColor='#ddd');
               this.style.borderColor='var(--primary, #2563eb)';
             ">
-        `).join('');
+        `;
+        }).join('');
       } else {
         pickerEl.style.display = 'none';
         pickerEl.innerHTML = '';
@@ -2322,7 +2325,7 @@ window.fetchBandPost = async function () {
       if (titleEl && data.ai.name)        titleEl.value = data.ai.name;
       if (priceEl && data.ai.price)       priceEl.value = data.ai.price;
       if (descEl  && data.ai.description) descEl.value  = data.ai.description;
-      const imgCount = proxiedImages.length;
+      const imgCount = originalImages.length;
       showToast(`✅ AI 분석 완료! 이미지 ${imgCount}개, 내용을 확인 후 등록하세요.`);
     } else if (data.ai_error) {
       showToast('⚠️ AI 분석 한도 초과: 이미지만 자동으로 불러옵니다.');

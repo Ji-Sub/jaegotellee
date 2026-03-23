@@ -164,7 +164,7 @@ function extractMeta(html, property) {
   return m ? m[1] : null;
 }
 
-// 밴드 페이지에서 이미지 URL 최대 3개 추출
+// 밴드 페이지에서 이미지 URL 최대 3개 추출 (원본 URL만 반환, 프록시 변환 없음)
 function extractImages(html) {
   const seen = new Set();
   const results = [];
@@ -172,13 +172,16 @@ function extractImages(html) {
   function addImage(url) {
     if (!url || seen.has(url) || results.length >= 3) return;
     if (!/^https?:\/\/.+/i.test(url)) return;
-    // 아이콘·프로필 사진은 제외 (너무 작거나 profile/avatar 경로)
     if (/profile|avatar|icon|logo|badge/i.test(url)) return;
     seen.add(url);
     results.push(url);
   }
 
-  // 우선순위 1: __NEXT_DATA__ JSON에서 photo 배열 탐색
+  // 1순위: og:image 메타 태그
+  const ogImg = extractMeta(html, 'og:image');
+  if (ogImg) addImage(ogImg);
+
+  // 2순위: __NEXT_DATA__ JSON에서 photo_url, url, src 키를 DFS로 탐색
   const ndMatch = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]+?)<\/script>/i);
   if (ndMatch) {
     try {
@@ -187,9 +190,15 @@ function extractImages(html) {
     } catch (_) { /* fall through */ }
   }
 
-  // 우선순위 2: og:image 메타 태그
-  const ogImg = extractMeta(html, 'og:image');
-  if (ogImg) addImage(ogImg);
+  // 3순위: <img> 태그 중 band.us/photo 또는 cdnImage 포함된 src
+  const imgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+  let m;
+  while ((m = imgRegex.exec(html)) !== null && results.length < 3) {
+    const src = m[1];
+    if (/band\.us\/photo|cdnImage|phinf\.naver|cdn\.band/i.test(src)) {
+      addImage(src.startsWith('//') ? 'https:' + src : src);
+    }
+  }
 
   return results;
 }
@@ -198,7 +207,11 @@ function extractImages(html) {
 function collectPhotoUrls(obj, addImage, depth) {
   if (depth > 12 || !obj) return;
   if (typeof obj === 'string') {
-    if (/^https?:\/\/.+\.(jpg|jpeg|png|webp|gif)(\?[^"']*)?$/i.test(obj)) addImage(obj);
+    const isImage = /^https?:\/\/.+/i.test(obj) && (
+      /\.(jpg|jpeg|png|webp|gif)(\?|$)/i.test(obj) ||
+      /photo|cdnImage|phinf|dthumb|cdn\.band/i.test(obj)
+    );
+    if (isImage) addImage(obj);
     return;
   }
   if (Array.isArray(obj)) {
@@ -206,8 +219,8 @@ function collectPhotoUrls(obj, addImage, depth) {
     return;
   }
   if (typeof obj === 'object') {
-    // 이미지 URL 관련 키 먼저 처리
-    const IMG_KEYS = ['url', 'photo_url', 'thumbnail_url', 'image_url', 'src', 'original_url', 'large_url'];
+    // 이미지 URL 관련 키 우선순위: photo_url > url > src
+    const IMG_KEYS = ['photo_url', 'url', 'src', 'thumbnail_url', 'image_url', 'original_url', 'large_url'];
     for (const key of IMG_KEYS) {
       if (typeof obj[key] === 'string') collectPhotoUrls(obj[key], addImage, depth + 1);
     }
