@@ -126,8 +126,8 @@ name 작성 규칙:
 JSON만 응답하고 다른 텍스트는 절대 포함하지 마세요.`;
 
   try {
-    // gemini-2.0-flash: 2025/2026 기준 최신 모델, 무료 할당량 제공
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`;
+    // gemini-1.5-flash: 무료 할당량 가장 넉넉 (분당 15회, 하루 1500회)
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`;
 
     const userContent = `${SYSTEM_PROMPT}\n\n---\n\n아래 게시글을 분석해주세요:\n\n${aiInput.slice(0, 2500)}`;
 
