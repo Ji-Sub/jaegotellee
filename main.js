@@ -376,20 +376,20 @@ async function addComment(postId, content) {
 
 async function fetchPendingSellers() {
   if (S.isDemo) return [{ id: 'demo', user_id: 'u1', status: 'pending', created_at: new Date().toISOString(), users: { email: 'demo_seller@test.com' } }];
-  const { data } = await withTimeout(sb.from('seller_applications').select('*, users(email)').eq('status', 'pending').order('created_at', { ascending: false }), 25000);
+  const { data } = await withTimeout(sb.from('seller_applications').select('*, users(email)').eq('status', 'pending').order('created_at', { ascending: false }), 60000);
   return data || [];
 }
 
 async function fetchPendingPosts() {
   if (S.isDemo) return [];
-  const { data, error } = await withTimeout(sb.from('posts').select('*').eq('approved', false).order('created_at', { ascending: false }), 25000);
+  const { data, error } = await withTimeout(sb.from('posts').select('*').eq('approved', false).order('created_at', { ascending: false }), 60000);
   if (error) { showToast('대기글 조회 오류: ' + error.message); return []; }
   return data || [];
 }
 
 async function fetchAllPostsAdmin() {
   if (S.isDemo) return DEMO_POSTS;
-  const { data, error } = await withTimeout(sb.from('posts').select('*').order('created_at', { ascending: false }), 25000);
+  const { data, error } = await withTimeout(sb.from('posts').select('*').order('created_at', { ascending: false }), 60000);
   if (error) { showToast('전체 게시글 불러오기 오류: ' + error.message); return []; }
   return data || [];
 }
@@ -1713,7 +1713,7 @@ async function renderAdminTab(myToken) {
         }`;
 
     } else if (S.adminTab === 'categories') {
-      const { data } = await withTimeout(sb.from('categories').select('*').order('sort_order', { ascending: true }), 25000);
+      const { data } = await withTimeout(sb.from('categories').select('*').order('sort_order', { ascending: true }), 60000);
       if (S.renderToken !== myToken) return;
       const rawList = data || [];
       const mapById = {}; rawList.forEach(c => { mapById[c.id] = { ...c, subs: [] }; });
@@ -2085,7 +2085,7 @@ async function fetchAdminUsers() {
     sb.from('users')
       .select('id, email, role, status')
       .order('email', { ascending: true }),
-    25000
+    60000
   );
   if (error) throw error;
   const list = users || [];
@@ -2095,7 +2095,7 @@ async function fetchAdminUsers() {
   try {
     const { data: pc } = await withTimeout(
       sb.from('posts').select('user_id').neq('user_id', null),
-      20000
+      60000
     );
     postCounts = pc || [];
   } catch (_) {}
@@ -2105,7 +2105,7 @@ async function fetchAdminUsers() {
   try {
     const { data: cc } = await withTimeout(
       sb.from('comments').select('user_id').neq('user_id', null),
-      20000
+      60000
     );
     commentCounts = cc || [];
   } catch (_) {}
@@ -2853,6 +2853,14 @@ async function init() {
       }
     });
   }
+
+  // Supabase Cold Start 방지 — 4분마다 가벼운 쿼리로 연결 유지
+  setInterval(async () => {
+    try {
+      await sb.from('categories').select('id').limit(1);
+      console.log('[keepalive] Supabase 연결 유지');
+    } catch (_) {}
+  }, 4 * 60 * 1000);
 
   window.addEventListener('hashchange', handleRoute);
   handleRoute();
