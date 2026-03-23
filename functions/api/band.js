@@ -60,8 +60,8 @@ export async function onRequest(context) {
 
   // 디버그 로그 (Cloudflare Pages 로그에서 확인 가능)
   console.log('[band.js] ogTitle len:', ogTitle.length, '|', ogTitle.slice(0, 80));
-  console.log('[band.js] ogDesc  len:', ogDescription.length, '|', ogDescription.slice(0, 80));
-  console.log('[band.js] bodyText len:', bodyText.length);
+  console.log('[band.js] ogDesc  len:', ogDescription.length, '|', ogDescription.slice(0, 120));
+  console.log('[band.js] bodyText len:', bodyText.length, '| preview:', bodyText.slice(0, 200));
 
   // og:title / og:description / bodyText 중 하나라도 있으면 AI에 전달
   const aiInput = [
@@ -70,7 +70,7 @@ export async function onRequest(context) {
     bodyText      ? `게시글 본문:\n${bodyText}`      : '',
   ].filter(Boolean).join('\n\n').trim();
 
-  console.log('[band.js] aiInput len:', aiInput.length);
+  console.log('[band.js] aiInput len:', aiInput.length, '| full preview:\n', aiInput.slice(0, 400));
 
   // 기본 응답 (AI 없이도 이미지는 반환)
   const baseResult = {
@@ -126,9 +126,9 @@ export async function onRequest(context) {
             role: 'system',
             content: `너는 밴드 도매글에서 상품 정보를 추출하는 AI야. 반드시 아래 형식의 JSON으로만 응답해.
 {
-  "name": "[상품명] [규격] (예: 무지개 망고 4kg)",
-  "price": "숫자만 (예: 35000)",
-  "description": "✅ [상품명] [규격] ➡️ [가격]원 ([배송비])\n\n핵심 특징 3줄 요약"
+  "name": "상품명과 규격 (예: 무지개 망고 4kg, 국내산 한우 등심 1kg)",
+  "price": "숫자만, 단위 없이 (예: 35000). 가격이 명시되지 않았더라도 본문에서 숫자와 '원'이 붙은 단어를 찾아 가장 유력한 판매가를 추측해라. 만원 단위(예: 3만원→30000, 3만5천→35000)도 변환해라. 끝까지 찾지 못하면 빈 문자열로 반환.",
+  "description": "✅ [상품명] [규격] ➡️ [가격]원 ([배송비])\n\n핵심 특징 3줄 이내 요약 (이모지 사용)"
 }`,
           },
           {
@@ -177,29 +177,44 @@ export async function onRequest(context) {
 // 비용 없이 name·price·description을 뽑아낸다.
 // name + price 모두 성공하면 AI 호출을 건너뜀.
 function extractByRule(text, ogTitle) {
-  // ── 이름 추출: [] 또는 【】 안의 텍스트 우선
+  // ── 이름 추출: [] 또는 【】 안의 텍스트 우선, 없으면 og:title 전체 사용
   let name = '';
   const bracketMatch = text.match(/[\[【]([^\]】]{2,30})[\]】]/);
   if (bracketMatch) {
     name = bracketMatch[1].trim();
   } else {
-    // og:title에서 첫 줄을 그대로 사용
+    // og:title 또는 본문 첫 의미있는 줄 사용 (길이 제한 완화: 60자)
     const titleLine = ogTitle.split(/[\n\r]/)[0].trim();
-    if (titleLine.length >= 2 && titleLine.length <= 40) name = titleLine;
+    if (titleLine.length >= 2) {
+      name = titleLine.slice(0, 60);
+    } else {
+      // og:title도 없으면 본문 첫 줄
+      const firstLine = text.split('\n').find(l => l.trim().length > 4 && !/^게시글/.test(l.trim()));
+      if (firstLine) name = firstLine.trim().slice(0, 60);
+    }
   }
 
-  // ── 가격 추출: '판매가', '공구가', '특가', '가격' 뒤 숫자 우선
+  // ── 가격 추출: 패턴 우선순위 확대
   let price = '';
   const pricePatterns = [
-    /(?:판매가|공구가|특가|행사가|할인가|소비자가)\s*[:：]?\s*([\d,]+)\s*원?/,
-    /(?:가격|금액)\s*[:：]\s*([\d,]+)\s*원?/,
-    /([\d,]+)\s*원\s*(?:\/|per|kg|개|박스|세트|묶음)/,
+    /(?:판매가|공구가|특가|행사가|할인가|소비자가|경매가)\s*[:：]?\s*([\d,]+)\s*원?/,
+    /(?:가격|금액|단가)\s*[:：]\s*([\d,]+)\s*원?/,
+    /([\d,]+)\s*원\s*(?:\/|per|kg|개|박스|세트|묶음|마리|두|근)/,
     /\b([\d,]{4,})\s*원/,
+    // 만원 단위: "3만원", "3만5천원"
+    /(\d+)만\s*(\d+)?천?\s*원/,
   ];
   for (const re of pricePatterns) {
     const m = text.match(re);
     if (m) {
-      price = m[1].replace(/,/g, '');
+      if (re.source.includes('만')) {
+        // 만원 단위 변환: "3만5천원" → 35000
+        const man = parseInt(m[1] || '0', 10);
+        const cheon = parseInt(m[2] || '0', 10);
+        price = String(man * 10000 + cheon * 1000);
+      } else {
+        price = m[1].replace(/,/g, '');
+      }
       break;
     }
   }
