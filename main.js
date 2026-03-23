@@ -2030,27 +2030,15 @@ async function deletePost(postId) {
 
 // users 테이블 + posts/comments 집계 조인으로 회원 목록 가져오기
 async function fetchAdminUsers() {
-  // users 테이블: id, email, role, status, created_at, last_sign_in_at
-  let list = [];
+  // users 테이블: id, email, role, status, created_at
   const { data: users, error } = await withTimeout(
     sb.from('users')
-      .select('id, email, role, status, created_at, last_sign_in_at')
+      .select('id, email, role, status, created_at')
       .order('created_at', { ascending: false }),
     25000
   );
-  if (!error && users && users.length > 0) {
-    list = users;
-  } else {
-    // users 실패 시 profiles 폴백
-    const { data: profiles, error: pe } = await withTimeout(
-      sb.from('profiles')
-        .select('id, email, role, status, created_at, last_sign_in_at')
-        .order('created_at', { ascending: false }),
-      25000
-    );
-    if (pe) throw pe;
-    list = profiles || [];
-  }
+  if (error) throw error;
+  const list = users || [];
 
   // 게시글 수 집계 (user_id 기준)
   let postCounts = [];
@@ -2085,18 +2073,13 @@ async function fetchAdminUsers() {
   }));
 }
 
-// 유저 활동 정지 / 해제 (profiles.status 컬럼 업데이트)
+// 유저 활동 정지 / 해제 (users.status 컬럼 업데이트)
 window.toggleUserBan = async function (userId, currentlyBanned) {
   const action = currentlyBanned ? '정지를 해제' : '활동을 정지';
   if (!confirm(`이 회원의 ${action}하시겠습니까?`)) return;
   const newStatus = currentlyBanned ? 'active' : 'banned';
   try {
-    // users 테이블 우선, 없으면 profiles 폴백
-    let error;
-    ({ error } = await sb.from('users').update({ status: newStatus }).eq('id', userId));
-    if (error) {
-      ({ error } = await sb.from('profiles').update({ status: newStatus }).eq('id', userId));
-    }
+    const { error } = await sb.from('users').update({ status: newStatus }).eq('id', userId);
     if (error) throw error;
     showToast(`회원 상태가 '${newStatus === 'banned' ? '정지됨' : '정상'}'으로 변경되었습니다.`);
     await renderAdminTab(bumpRenderToken());
