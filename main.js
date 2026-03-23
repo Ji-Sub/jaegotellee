@@ -250,42 +250,31 @@ function showToast(msg) {
 async function loadRole() {
   if (!sb || !S.user) return;
   try {
-    // 1. users 테이블 먼저 확인 (id 또는 email 기준)
+    // role만 먼저 조회 (status 컬럼 없는 경우 에러 방지)
     const { data: ud, error: ue } = await sb
       .from('users')
-      .select('role, status')
+      .select('role')
       .eq('id', S.user.id)
       .maybeSingle();
 
-    if (!ue && ud) {
-      S.role       = ud.role   || 'user';
-      S.userStatus = ud.status || 'active';
-      console.log('[loadRole] users table → role:', S.role, '| status:', S.userStatus);
-    } else {
-      // 2. users 미스 → profiles 폴백
-      if (ue) console.warn('[loadRole] users query error:', ue.message);
-      const { data: pd, error: pe } = await sb
-        .from('profiles')
-        .select('role, status')
-        .eq('id', S.user.id)
-        .maybeSingle();
-      if (pe) console.warn('[loadRole] profiles query error:', pe.message);
-      S.role       = pd?.role   || 'user';
-      S.userStatus = pd?.status || 'active';
-      console.log('[loadRole] profiles fallback → role:', S.role, '| status:', S.userStatus);
+    if (!ue && ud?.role) {
+      S.role = ud.role;
+      console.log('[loadRole] role:', S.role);
+      return;
     }
 
-    // 정지된 유저는 강제 로그아웃
-    if (S.userStatus === 'banned') {
-      try { await sb.auth.signOut(); } catch (_) {}
-      S.user = null; S.role = null; S.userStatus = null;
-      alert('계정이 정지되었습니다. 관리자에게 문의하세요.');
-      window.location.hash = '#/';
-    }
+    // users 미스 → profiles 폴백
+    const { data: pd } = await sb
+      .from('profiles')
+      .select('role')
+      .eq('id', S.user.id)
+      .maybeSingle();
+
+    S.role = pd?.role || 'user';
+    console.log('[loadRole] profiles fallback → role:', S.role);
   } catch (err) {
     console.error('[loadRole] 에러:', err);
     S.role = 'user';
-    S.userStatus = 'active';
   }
 }
 
