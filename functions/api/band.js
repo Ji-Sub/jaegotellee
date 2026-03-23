@@ -86,13 +86,29 @@ export async function onRequest(context) {
     return json({ ...baseResult, ai_skipped: '분석할 텍스트 없음 (og:title·description·본문 모두 비어있음)' });
   }
 
-  // ── 4. OpenAI gpt-4o-mini로 상품 정보 구조화 ─────────────────────────────
-  const openaiKey = context.env?.OPENAI_API_KEY;
-  if (!openaiKey) {
-    return json({ ...baseResult, ai_skipped: 'OPENAI_API_KEY 환경변수가 설정되지 않았습니다.' });
+  // ── 4. 1순위: 룰 기반 정규표현식 추출 (API 비용 0원) ─────────────────────
+  const ruleResult = extractByRule(aiInput, ogTitle);
+  console.log('[band.js] rule result:', JSON.stringify(ruleResult));
+
+  // name + price 모두 추출됐으면 AI 호출 없이 바로 반환
+  if (ruleResult.name && ruleResult.price) {
+    console.log('[band.js] rule-based success → AI skipped');
+    return json({ ...baseResult, ai: ruleResult, ai_source: 'rule' });
   }
 
-  const postText = aiInput.slice(0, 2500);
+  // ── 5. 2순위: OpenAI gpt-4o-mini (룰 실패 시에만 호출) ───────────────────
+  const openaiKey = context.env?.OPENAI_API_KEY;
+  if (!openaiKey) {
+    // AI 키 없으면 룰 결과라도 반환
+    return json({
+      ...baseResult,
+      ai: ruleResult.name ? ruleResult : null,
+      ai_skipped: 'OPENAI_API_KEY 환경변수가 설정되지 않았습니다.',
+    });
+  }
+
+  console.log('[band.js] rule partial → calling OpenAI');
+  const postText = aiInput.slice(0, 2000); // 토큰 절약: 2500→2000
 
   try {
     const aiRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -104,14 +120,15 @@ export async function onRequest(context) {
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         response_format: { type: 'json_object' },
+        max_tokens: 400, // 토큰 절약: 필드 3개만 추출
         messages: [
           {
             role: 'system',
             content: `너는 밴드 도매글에서 상품 정보를 추출하는 AI야. 반드시 아래 형식의 JSON으로만 응답해.
 {
-  "name": "[상품명] [규격]",
+  "name": "[상품명] [규격] (예: 무지개 망고 4kg)",
   "price": "숫자만 (예: 35000)",
-  "description": "✅ [상품명] [규격] ➡️ [가격]원 ([배송비])\\n\\n(여기에 핵심 특징 3줄 요약)"
+  "description": "✅ [상품명] [규격] ➡️ [가격]원 ([배송비])\n\n핵심 특징 3줄 요약"
 }`,
           },
           {
@@ -125,11 +142,12 @@ export async function onRequest(context) {
     const aiJson = await aiRes.json();
 
     if (!aiRes.ok) {
-      const errMsg = aiJson.error?.message || aiJson.message || `HTTP ${aiRes.status}`;
+      const errMsg = aiJson.error?.message || `HTTP ${aiRes.status}`;
       console.error('[band.js] OpenAI API error:', aiRes.status, errMsg);
       return json({
         ...baseResult,
         ai_error: true,
+        ai: ruleResult.name ? ruleResult : null,
         ai_skipped: `OpenAI 오류: ${errMsg}`,
       });
     }
@@ -140,7 +158,7 @@ export async function onRequest(context) {
     }
 
     const parsedData = JSON.parse(raw);
-    return json({ ...baseResult, ai: parsedData });
+    return json({ ...baseResult, ai: parsedData, ai_source: 'openai' });
   } catch (aiErr) {
     console.error('[band.js] AI 분석 실패:', aiErr.message);
     return json({
@@ -150,9 +168,60 @@ export async function onRequest(context) {
       images,
       title: ogTitle,
       body_text: bodyText,
-      ai: null,
+      ai: ruleResult.name ? ruleResult : null,
     });
   }
+}
+
+// ── 룰 기반 정규표현식 추출 ────────────────────────────────────────────────
+// 비용 없이 name·price·description을 뽑아낸다.
+// name + price 모두 성공하면 AI 호출을 건너뜀.
+function extractByRule(text, ogTitle) {
+  // ── 이름 추출: [] 또는 【】 안의 텍스트 우선
+  let name = '';
+  const bracketMatch = text.match(/[\[【]([^\]】]{2,30})[\]】]/);
+  if (bracketMatch) {
+    name = bracketMatch[1].trim();
+  } else {
+    // og:title에서 첫 줄을 그대로 사용
+    const titleLine = ogTitle.split(/[\n\r]/)[0].trim();
+    if (titleLine.length >= 2 && titleLine.length <= 40) name = titleLine;
+  }
+
+  // ── 가격 추출: '판매가', '공구가', '특가', '가격' 뒤 숫자 우선
+  let price = '';
+  const pricePatterns = [
+    /(?:판매가|공구가|특가|행사가|할인가|소비자가)\s*[:：]?\s*([\d,]+)\s*원?/,
+    /(?:가격|금액)\s*[:：]\s*([\d,]+)\s*원?/,
+    /([\d,]+)\s*원\s*(?:\/|per|kg|개|박스|세트|묶음)/,
+    /\b([\d,]{4,})\s*원/,
+  ];
+  for (const re of pricePatterns) {
+    const m = text.match(re);
+    if (m) {
+      price = m[1].replace(/,/g, '');
+      break;
+    }
+  }
+
+  // ── 간단한 description 조합 (룰 성공 시 AI 없이 표시할 용도)
+  let description = '';
+  if (name && price) {
+    // 배송비 추출
+    let shipping = '문의';
+    const shipMatch = text.match(/(?:배송비?|택배비)\s*[:：]?\s*([^\n,。]{1,20})/);
+    if (shipMatch) shipping = shipMatch[1].trim();
+
+    // 본문 첫 의미있는 줄 최대 3개
+    const lines = text.split('\n')
+      .map(l => l.trim())
+      .filter(l => l.length > 5 && !/^게시글/.test(l))
+      .slice(0, 3);
+
+    description = `✅ ${name} ➡️ ${Number(price).toLocaleString()}원 (배송비: ${shipping})\n\n${lines.join('\n')}`;
+  }
+
+  return { name, price, description };
 }
 
 // ── 헬퍼 함수들 ─────────────────────────────────────────────────────────────
