@@ -92,7 +92,7 @@ function bumpRenderToken() {
 }
 
 function removeRenderSpinnerIfCurrent(myToken) {
-  if (S.renderToken !== myToken) return;
+  // ✅ 토큰 조건 제거 — 스피너 id가 myToken 기준이라 다른 화면 스피너에 영향 없음
   document.getElementById(`spinner-${myToken}`)?.remove();
 }
 
