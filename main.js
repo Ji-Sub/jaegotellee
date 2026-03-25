@@ -899,16 +899,20 @@ async function renderHotdealDetail(myToken) {
     const isWafBlocked = wafHitByHtml || wafHitByContent;
 
     if (isWafBlocked) {
-      contentHtml = `
-        <div style="text-align:center; padding: 40px 20px; background: var(--bg-secondary, #f8fafc); border-radius: 12px;">
-          <div style="font-size: 40px; margin-bottom: 16px;">🛡️</div>
-          <h3 style="margin-bottom: 8px; color: var(--text-main);">보안 정책 안내</h3>
-          <p style="color: var(--text-sub); line-height: 1.6; word-break: keep-all;">
-            해당 쇼핑몰/커뮤니티의 보안 정책으로 인해 본문 미리보기를 제공할 수 없습니다.<br>
-            아래 <b>[원본 링크 보러가기]</b> 버튼을 눌러 상세 정보를 확인해 주세요.
-          </p>
-        </div>
-      `;
+      if (post.description && post.description.trim()) {
+        contentHtml = post.description.replace(/\n/g, '<br>');
+      } else {
+        contentHtml = `
+          <div style="text-align:center; padding: 40px 20px; background: var(--bg-secondary, #f8fafc); border-radius: 12px;">
+            <div style="font-size: 40px; margin-bottom: 16px;">🛡️</div>
+            <h3 style="margin-bottom: 8px; color: var(--text-main);">보안 정책 안내</h3>
+            <p style="color: var(--text-sub); line-height: 1.6; word-break: keep-all;">
+              해당 쇼핑몰/커뮤니티의 보안 정책으로 인해 본문 미리보기를 제공할 수 없습니다.<br>
+              아래 <b>[원본 링크 보러가기]</b> 버튼을 눌러 상세 정보를 확인해 주세요.
+            </p>
+          </div>
+        `;
+      }
     } else if (!contentHtml || contentHtml.length < 20) {
       contentHtml = `
         <div style="text-align:center;">
@@ -1264,16 +1268,20 @@ async function renderDetail(myToken) {
           const isWafBlocked = wafHitByHtml || wafHitByContent;
 
           if (isWafBlocked) {
-            contentHtml = `
-              <div style="text-align:center; padding: 40px 20px; background: var(--bg-secondary, #f8fafc); border-radius: 12px;">
-                <div style="font-size: 40px; margin-bottom: 16px;">🛡️</div>
-                <h3 style="margin-bottom: 8px; color: var(--text-main);">보안 정책 안내</h3>
-                <p style="color: var(--text-sub); line-height: 1.6; word-break: keep-all;">
-                  해당 쇼핑몰/커뮤니티의 보안 정책으로 인해 본문 미리보기를 제공할 수 없습니다.<br>
-                  아래 <b>[원본 링크 보러가기]</b> 버튼을 눌러 상세 정보를 확인해 주세요.
-                </p>
-              </div>
-            `;
+            if (post.description && post.description.trim()) {
+              contentHtml = post.description.replace(/\n/g, '<br>');
+            } else {
+              contentHtml = `
+                <div style="text-align:center; padding: 40px 20px; background: var(--bg-secondary, #f8fafc); border-radius: 12px;">
+                  <div style="font-size: 40px; margin-bottom: 16px;">🛡️</div>
+                  <h3 style="margin-bottom: 8px; color: var(--text-main);">보안 정책 안내</h3>
+                  <p style="color: var(--text-sub); line-height: 1.6; word-break: keep-all;">
+                    해당 쇼핑몰/커뮤니티의 보안 정책으로 인해 본문 미리보기를 제공할 수 없습니다.<br>
+                    아래 <b>[원본 링크 보러가기]</b> 버튼을 눌러 상세 정보를 확인해 주세요.
+                  </p>
+                </div>
+              `;
+            }
           } else if (!contentHtml || contentHtml.length < 20) {
             contentHtml = `
               <div style="text-align:center;">
