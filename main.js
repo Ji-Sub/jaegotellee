@@ -2440,8 +2440,15 @@ function renderCreate(_myToken) {
       <div class="form-group"><label class="form-label">가격 *</label><input class="form-input" id="p-price" type="text" placeholder="예: 35,000원/kg"></div>
       <div class="form-group"><label class="form-label">상세 설명 *</label><textarea class="form-input" id="p-desc" style="min-height:130px;" placeholder="상품 상태, 수량, 배송 방법 등을 자세히 적어주세요."></textarea></div>
       <div class="form-group">
-        <label class="form-label">이미지 URL</label>
-        <input class="form-input" id="p-img" type="url" placeholder="https://...">
+        <label class="form-label">이미지</label>
+        <input class="form-input" id="p-img-file" type="file" accept="image/*" multiple
+          style="padding:6px;"
+          onchange="uploadPostImages(this)">
+        <div id="p-img-upload-status" style="display:none;margin-top:6px;font-size:13px;color:#6b7280;display:flex;align-items:center;gap:6px;">
+          <div class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;flex-shrink:0;"></div>
+          <span>업로드 중...</span>
+        </div>
+        <input class="form-input" id="p-img" type="url" placeholder="https://... (직접 입력 또는 파일 업로드)" style="margin-top:8px;">
         <div id="p-img-picker" style="display:none;gap:8px;flex-wrap:wrap;margin-top:10px;"></div>
       </div>
       <div class="form-group"><label class="form-label">구매 링크</label><input class="form-input" id="p-link" type="url" placeholder="https://..."></div>
@@ -2546,6 +2553,64 @@ async function submitPost() {
 }
 
 window.submitPost = submitPost;
+
+// ─────────────────────────────────────────────
+// 이미지 파일 업로드 → R2
+// ─────────────────────────────────────────────
+window.uploadPostImages = async function (input) {
+  const files = input.files;
+  if (!files || files.length === 0) return;
+
+  const statusEl = document.getElementById('p-img-upload-status');
+  const imgEl    = document.getElementById('p-img');
+  const pickerEl = document.getElementById('p-img-picker');
+
+  // 업로드 중 표시
+  if (statusEl) { statusEl.style.display = 'flex'; }
+  if (pickerEl) { pickerEl.style.display = 'none'; pickerEl.innerHTML = ''; }
+
+  try {
+    const formData = new FormData();
+    for (const file of files) formData.append('files', file);
+
+    const res = await fetch('/api/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (!res.ok || !data.success) throw new Error(data.error || '업로드 실패');
+
+    const urls = data.urls || [];
+    if (urls.length === 0) throw new Error('업로드된 URL이 없습니다');
+
+    // 첫 번째 이미지 자동 입력
+    if (imgEl) imgEl.value = urls[0];
+
+    // 썸네일 피커 표시 (2장 이상)
+    if (pickerEl && urls.length > 1) {
+      pickerEl.style.display = 'flex';
+      pickerEl.innerHTML = urls.map((url, i) => `
+        <img src="${url}"
+          data-url="${url}"
+          style="width:70px;height:70px;object-fit:cover;border-radius:8px;cursor:pointer;border:3px solid ${i === 0 ? 'var(--primary,#2563eb)' : '#ddd'};transition:border-color 0.15s;"
+          loading="lazy"
+          title="이미지 ${i + 1} 선택"
+          onclick="
+            document.getElementById('p-img').value=this.dataset.url;
+            document.getElementById('p-img-picker').querySelectorAll('img').forEach(el=>el.style.borderColor='#ddd');
+            this.style.borderColor='var(--primary,#2563eb)';
+          ">
+      `).join('');
+    }
+
+    showToast(`이미지 ${urls.length}장 업로드 완료`);
+  } catch (e) {
+    console.error('[uploadPostImages]', e);
+    showToast('이미지 업로드 실패: ' + (e?.message || String(e)));
+  } finally {
+    if (statusEl) statusEl.style.display = 'none';
+    // 파일 input 초기화 (같은 파일 재선택 가능하게)
+    input.value = '';
+  }
+};
 
 // ─────────────────────────────────────────────
 // BAND 게시글 자동 불러오기
