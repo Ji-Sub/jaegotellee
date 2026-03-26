@@ -933,6 +933,12 @@ async function renderHotdealDetail(myToken) {
         <div class="detail-price">${esc(formatPrice(price))}</div>
         <div class="comments-section" style="padding-top:20px; border-bottom: 1px solid var(--border-color); margin-bottom: 30px; padding-bottom: 30px;">
           <div class="detail-desc" style="white-space:pre-wrap; overflow:hidden; width:100%; max-width:100%;">
+            ${post.image_url ? `
+              <img src="https://wsrv.nl/?url=${encodeURIComponent(post.image_url)}"
+                referrerpolicy="no-referrer"
+                loading="lazy"
+                style="width:100%; max-width:500px; height:auto; border-radius:12px; margin-bottom:20px; display:block;">
+            ` : ''}
             ${contentHtml}
           </div>
         </div>
@@ -1317,6 +1323,12 @@ async function renderDetail(myToken) {
         </div>
 
         <div class="detail-desc" style="white-space:pre-wrap; overflow:hidden; width:100%; max-width:100%;">
+          ${post.image_url ? `
+            <img src="https://wsrv.nl/?url=${encodeURIComponent(post.image_url)}"
+              referrerpolicy="no-referrer"
+              loading="lazy"
+              style="width:100%; max-width:500px; height:auto; border-radius:12px; margin-bottom:20px; display:block;">
+          ` : ''}
           ${contentHtml}
         </div>
 
