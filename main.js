@@ -126,7 +126,7 @@ function esc(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function withTimeout(promise, ms = 12000, msg = '요청 시간이 초과되었습니다. 네트워크를 확인해 주세요.') {
+function withTimeout(promise, ms = 30000, msg = '요청 시간이 초과되었습니다. 네트워크를 확인해 주세요.') {
   let timer;
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => reject(new Error(msg)), ms);
