@@ -1528,7 +1528,7 @@ async function renderAdminTab(myToken) {
             <td><select class="form-input" style="width:140px;padding:4px;" onchange="updatePostCategory('${p.id}', this.value)">${getCategoryOptionsHtml(p.category)}</select></td>
             <td><span class="badge ${p.approved ? 'badge-approved' : 'badge-pending'}">${p.approved ? '승인됨' : '대기중'}</span></td>
             <td>${p.views || 0}</td>
-            <td><div class="btn-row"><button class="btn btn-danger btn-sm" onclick="deletePost('${p.id}')">삭제</button></div></td>
+            <td><div class="btn-row"><button class="btn btn-primary btn-sm" onclick="openEditPostModal('${p.id}')">수정</button><button class="btn btn-danger btn-sm" onclick="deletePost('${p.id}')">삭제</button></div></td>
           </tr>`).join('');
 
       body.innerHTML = `
@@ -1954,6 +1954,87 @@ async function approvePost(postId) {
     showToast(e?.message || String(e));
   }
 }
+async function openEditPostModal(postId) {
+  if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
+  try {
+    const { data: post, error } = await sb.from('posts').select('*').eq('id', postId).single();
+    if (error) throw error;
+    const catOpts = getCategoryOptionsHtml(post.category);
+    openModal(`
+      <button class="modal-close" onclick="closeModal()">✕</button>
+      <div class="modal-title">게시글 수정</div>
+      <div class="form-group">
+        <label class="form-label">제목 *</label>
+        <input class="form-input" id="edit-post-title" type="text" value="${esc(post.title || '')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">카테고리 *</label>
+        <select class="form-input" id="edit-post-cat">${catOpts}</select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">가격</label>
+        <input class="form-input" id="edit-post-price" type="text" value="${esc(post.price || '')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">상세설명</label>
+        <textarea class="form-input" id="edit-post-desc" style="min-height:120px;">${esc(post.description || '')}</textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">이미지 URL</label>
+        <input class="form-input" id="edit-post-img" type="url" value="${esc(post.image_url || '')}">
+      </div>
+      <div class="form-group">
+        <label class="form-label">구매 링크</label>
+        <input class="form-input" id="edit-post-link" type="url" value="${esc(post.purchase_link || '')}">
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="edit-post-approved" ${post.approved ? 'checked' : ''}>
+        <label for="edit-post-approved" class="form-label" style="margin:0;">승인됨</label>
+      </div>
+      <button class="btn btn-primary btn-full" style="margin-top:8px;" onclick="saveEditPost('${postId}')">저장</button>
+    `);
+  } catch (e) {
+    console.error('[openEditPostModal]', e);
+    showToast('게시글 정보를 불러오지 못했습니다: ' + (e?.message || String(e)));
+  }
+}
+
+async function saveEditPost(postId) {
+  if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
+  const title    = document.getElementById('edit-post-title')?.value.trim();
+  const category = document.getElementById('edit-post-cat')?.value;
+  const price    = document.getElementById('edit-post-price')?.value.trim();
+  const desc     = document.getElementById('edit-post-desc')?.value.trim();
+  const imgUrl   = document.getElementById('edit-post-img')?.value.trim();
+  const link     = document.getElementById('edit-post-link')?.value.trim();
+  const approved = document.getElementById('edit-post-approved')?.checked ?? false;
+
+  if (!title || !category) { showToast('제목과 카테고리는 필수입니다'); return; }
+
+  const btn = document.querySelector('#modal-container .btn-primary.btn-full');
+  if (btn) { btn.disabled = true; btn.textContent = '저장 중...'; }
+
+  try {
+    const { error } = await sb.from('posts').update({
+      title,
+      category,
+      price: price || null,
+      description: desc || null,
+      image_url: imgUrl || null,
+      purchase_link: link || null,
+      approved,
+    }).eq('id', postId);
+    if (error) throw error;
+    closeModal();
+    showToast('게시글이 수정되었습니다');
+    await renderAdminTab(bumpRenderToken());
+  } catch (e) {
+    console.error('[saveEditPost]', e);
+    showToast('수정 실패: ' + (e?.message || String(e)));
+    if (btn) { btn.disabled = false; btn.textContent = '저장'; }
+  }
+}
+
 async function deletePost(postId) {
   if (!confirm('정말 삭제하시겠습니까?')) return;
   if (S.isDemo) { showToast('데모 모드에서는 사용할 수 없습니다'); return; }
