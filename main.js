@@ -2426,6 +2426,7 @@ function renderCreate(_myToken) {
       <div class="form-card">
       <div class="page-header"><h1>딜 등록</h1><p>관리자 승인 후 공개됩니다.</p></div>
 
+      ${S.role === 'admin' ? `
       <div class="form-group" style="background:#f0f7ff;border:1.5px solid #b3d4f5;border-radius:10px;padding:14px 16px 12px;">
         <label class="form-label" style="color:#1a6bbf;font-weight:700;">📷 밴드 게시글 자동 불러오기 <span style="font-size:11px;font-weight:400;color:#555;">(선택사항)</span></label>
         <div style="display:flex;gap:8px;align-items:stretch;">
@@ -2434,6 +2435,7 @@ function renderCreate(_myToken) {
         </div>
         <p style="margin:6px 0 0;font-size:11px;color:#666;">밴드 링크를 붙여넣고 버튼을 누르면 이미지·제목이 자동으로 채워집니다.</p>
       </div>
+      ` : ''}
 
       <div class="form-group"><label class="form-label">제목 *</label><input class="form-input" id="p-title" type="text" placeholder="상품명 + 핵심 특징"></div>
       <div class="form-group"><label class="form-label">카테고리 *</label><select class="form-input" id="p-cat">${catOptions}</select></div>
