@@ -153,7 +153,22 @@ export async function onRequest(context) {
     console.log('[band.js] rule-based success → AI text skipped');
   }
 
-  // ── 6. DALL-E AI 썸네일 생성 + R2 업로드 ────────────────────────────────
+  // ── 6. 전화번호 + 판매자 링크 추출 → description에 추가 ──────────────────
+  const phone = extractPhoneNumber(bodyText || ogDescription || '');
+  const sellerLinks = extractSellerLinks(html);
+
+  if (aiResult) {
+    let extra = '';
+    if (phone) extra += `\n📞 ${phone}`;
+    if (sellerLinks.length > 0) {
+      extra += '\n\n🔗 판매자 링크:\n' + sellerLinks
+        .map(u => `<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`)
+        .join('\n');
+    }
+    if (extra) aiResult.description = (aiResult.description || '') + extra;
+  }
+
+  // ── 7. DALL-E AI 썸네일 생성 + R2 업로드 ────────────────────────────────
   const productName = aiResult?.name || ogTitle || '';
   let aiThumbnailUrl = null;
 
@@ -375,6 +390,29 @@ async function getSigningKey(secretKey, dateOnly, region, service) {
   const kService = await hmacKey(kRegion, service);
   const kSigning = await hmacKey(kService, 'aws4_request');
   return await crypto.subtle.importKey('raw', kSigning, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+}
+
+// ── 전화번호 추출 ──────────────────────────────────────────────────────────
+function extractPhoneNumber(text) {
+  const m = text.match(/0[1][0-9][\s\-]?\d{3,4}[\s\-]?\d{4}|0[2-9]\d?[\s\-]\d{3,4}[\s\-]\d{4}/);
+  return m ? m[0].replace(/\s+/g, '-').replace(/-{2,}/g, '-') : '';
+}
+
+// ── 판매자 외부 링크 추출 ───────────────────────────────────────────────────
+function extractSellerLinks(html) {
+  const links = [];
+  const seen = new Set();
+  const re = /href=["'](https?:\/\/(?!band\.us)[^\s"'<>]+)["']/gi;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const url = m[1];
+    if (seen.has(url)) continue;
+    if (/kakao|naver|coupang|smartstore|11st|gmarket|auction|instagram|open\.kakao/i.test(url)) {
+      seen.add(url);
+      links.push(url);
+    }
+  }
+  return links.slice(0, 3);
 }
 
 // ── 룰 기반 정규표현식 추출 ────────────────────────────────────────────────
