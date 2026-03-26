@@ -372,7 +372,7 @@ async function fetchPendingPosts() {
 
 async function fetchAllPostsAdmin() {
   if (S.isDemo) return DEMO_POSTS;
-  const { data, error } = await withTimeout(sb.from('posts').select('*').order('created_at', { ascending: false }), 60000);
+  const { data, error } = await withTimeout(sb.from('posts').select('*, users(email)').order('created_at', { ascending: false }), 60000);
   if (error) { showToast('전체 게시글 불러오기 오류: ' + error.message); return []; }
   return data || [];
 }
@@ -1521,15 +1521,22 @@ async function renderAdminTab(myToken) {
 
       const tableRows = data.length === 0
         ? ''
-        : data.map(p => `
+        : data.map(p => {
+          const isAuto   = !p.users || p.category === 'hotdeal';
+          const authorStr = isAuto ? '자동' : esc((p.users.email || '').split('@')[0]);
+          const dateStr   = p.created_at ? formatDate(p.created_at).replace(/\.\s*/g, '/').slice(0, -1) : '-';
+          return `
           <tr data-id="${esc(p.id)}" data-title="${esc(p.title.toLowerCase())}" data-cat="${esc(p.category || '')}">
             <td style="width:36px;text-align:center;"><input type="checkbox" class="admin-row-check" data-id="${esc(p.id)}" onchange="adminUpdateBulkBtn()"></td>
             <td>${esc(p.title)}</td>
             <td><select class="form-input" style="width:140px;padding:4px;" onchange="updatePostCategory('${p.id}', this.value)">${getCategoryOptionsHtml(p.category)}</select></td>
             <td><span class="badge ${p.approved ? 'badge-approved' : 'badge-pending'}">${p.approved ? '승인됨' : '대기중'}</span></td>
             <td>${p.views || 0}</td>
+            <td style="font-size:12px;color:#6b7280;">${authorStr}</td>
+            <td style="font-size:12px;color:#6b7280;white-space:nowrap;">${dateStr}</td>
             <td><div class="btn-row"><button class="btn btn-primary btn-sm" onclick="openEditPostModal('${p.id}')">수정</button><button class="btn btn-danger btn-sm" onclick="deletePost('${p.id}')">삭제</button></div></td>
-          </tr>`).join('');
+          </tr>`;
+        }).join('');
 
       body.innerHTML = `
         <div style="margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between;">
@@ -1545,7 +1552,7 @@ async function renderAdminTab(myToken) {
           : `<table class="admin-table" id="admin-all-table">
               <thead><tr>
                 <th style="width:36px;text-align:center;"><input type="checkbox" id="admin-check-all" onchange="adminToggleAll(this)"></th>
-                <th>제목</th><th>카테고리</th><th>상태</th><th>조회</th><th>액션</th>
+                <th>제목</th><th>카테고리</th><th>상태</th><th>조회</th><th>작성자</th><th>등록일</th><th>액션</th>
               </tr></thead>
               <tbody>${tableRows}</tbody>
             </table>`
