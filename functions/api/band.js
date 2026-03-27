@@ -158,14 +158,16 @@ export async function onRequest(context) {
   const sellerLinks = extractSellerLinks(html);
 
   if (aiResult) {
-    let extra = '';
-    if (phone) extra += `\n📞 ${phone}`;
+    // 원문 전체 텍스트를 description으로 사용
+    aiResult.description = bodyText || aiResult.description || '';
+
+    // 전화번호 + 판매자 링크 추가
+    if (phone) aiResult.description += `\n\n📞 ${phone}`;
     if (sellerLinks.length > 0) {
-      extra += '\n\n🔗 판매자 링크:\n' + sellerLinks
+      aiResult.description += '\n\n🔗 판매자 링크:\n' + sellerLinks
         .map(u => `<a href="${u}" target="_blank" rel="noopener noreferrer">${u}</a>`)
         .join('\n');
     }
-    if (extra) aiResult.description = (aiResult.description || '') + extra;
   }
 
   // ── 7. DALL-E AI 썸네일 생성 + R2 업로드 ────────────────────────────────
