@@ -64,9 +64,8 @@ export async function onRequest(context) {
   console.log('[band.js] bodyText len:', bodyText.length, '| preview:', bodyText.slice(0, 200));
 
   const aiInput = [
-    ogTitle       ? `게시글 제목: ${ogTitle}`       : '',
+    ogTitle       ? `게시글 본문:\n${ogTitle}`       : '',
     ogDescription ? `게시글 요약: ${ogDescription}` : '',
-    bodyText      ? `게시글 본문:\n${bodyText}`      : '',
   ].filter(Boolean).join('\n\n').trim();
 
   console.log('[band.js] aiInput len:', aiInput.length, '| full preview:\n', aiInput.slice(0, 400));
@@ -163,7 +162,7 @@ export async function onRequest(context) {
     aiResult.name = (aiResult.name || '').slice(0, 50);
 
     // 원문 전체 텍스트를 description으로 사용
-    aiResult.description = bodyText || aiResult.description || '';
+    aiResult.description = ogTitle || aiResult.description || '';
 
     // 전화번호 + 판매자 링크 추가
     if (phone) aiResult.description += `\n\n📞 ${phone}`;
