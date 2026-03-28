@@ -63,8 +63,9 @@ export async function onRequest(context) {
   console.log('[band.js] ogDesc  len:', ogDescription.length, '|', ogDescription.slice(0, 120));
   console.log('[band.js] bodyText len:', bodyText.length, '| preview:', bodyText.slice(0, 200));
 
+  const fullBody = (bodyText && bodyText.length > ogTitle.length) ? bodyText : (ogTitle || bodyText || '');
   const aiInput = [
-    ogTitle       ? `게시글 본문:\n${ogTitle}`       : '',
+    fullBody      ? `게시글 본문:\n${fullBody}`       : '',
     ogDescription ? `게시글 요약: ${ogDescription}` : '',
   ].filter(Boolean).join('\n\n').trim();
 
@@ -162,7 +163,7 @@ export async function onRequest(context) {
     aiResult.name = (aiResult.name || '').slice(0, 50);
 
     // 원문 전체 텍스트를 description으로 사용
-    aiResult.description = ogTitle || aiResult.description || '';
+    aiResult.description = fullBody || aiResult.description || '';
 
     // 전화번호 + 판매자 링크 추가
     if (phone) aiResult.description += `\n\n📞 ${phone}`;
@@ -407,12 +408,13 @@ function extractPhoneNumber(text) {
 function extractSellerLinks(html) {
   const links = [];
   const seen = new Set();
-  const re = /href=["'](https?:\/\/(?!band\.us)[^\s"'<>]+)["']/gi;
+  const re = /href=["'](https?:\/\/[^\s"'<>]+)["']/gi;
   let m;
   while ((m = re.exec(html)) !== null) {
     const url = m[1];
     if (seen.has(url)) continue;
-    if (/kakao|naver|coupang|smartstore|11st|gmarket|auction|instagram|open\.kakao/i.test(url)) {
+    if (/band\.us|naver\.com\/(bandapp|help|notice|policy)|mobilecore|applinkstore|appsflyer|onelink/i.test(url)) continue;
+    if (/smartstore\.naver|coupang|11st|gmarket|auction|instagram|open\.kakao|kakao\.com/i.test(url)) {
       seen.add(url);
       links.push(url);
     }
@@ -569,26 +571,21 @@ function extractBodyText(html) {
 }
 
 function findKoreanBody(obj, depth) {
-  if (depth > 12 || !obj || typeof obj !== 'object') return null;
-  const BODY_KEYS = new Set(['body', 'content', 'text', 'caption', 'description', 'message', 'postBody', 'post_body']);
-  const candidates = [];
+  if (depth > 15 || !obj || typeof obj !== 'object') return null;
+  const BODY_KEYS = new Set(['body', 'content', 'text', 'caption', 'message', 'postBody', 'post_body']);
+  let best = null;
 
   for (const [key, val] of Object.entries(obj)) {
-    if (typeof val === 'string' && val.length > 20 && /[\uAC00-\uD7A3]/.test(val)) {
-      if (BODY_KEYS.has(key.toLowerCase())) {
-        candidates.push({ val, depth });
+    if (typeof val === 'string' && val.length > 50 && /[\uAC00-\uD7A3]/.test(val)) {
+      if (BODY_KEYS.has(key.toLowerCase()) && val.length > (best?.length || 0)) {
+        best = val;
       }
     } else if (val && typeof val === 'object') {
       const found = findKoreanBody(val, depth + 1);
-      if (found) return found;
+      if (found && found.length > (best?.length || 0)) best = found;
     }
   }
-
-  if (candidates.length > 0) {
-    candidates.sort((a, b) => b.val.length - a.val.length);
-    return candidates[0].val;
-  }
-  return null;
+  return best;
 }
 
 function json(data, status = 200) {
