@@ -158,8 +158,9 @@ export async function onRequest(context) {
   const sellerLinks = extractSellerLinks(html);
 
   if (aiResult) {
-    // ogTitle이 있으면 우선 사용, 없으면 AI name (최대 50자)
-    aiResult.name = (ogTitle || aiResult.name || '').slice(0, 50);
+    // ogTitle은 "산지직송.생산자직거래... : BAND Page" 같은 밴드 페이지 제목이라 상품명으로 쓰면 안 됨
+    // AI/룰이 추출한 name만 사용
+    aiResult.name = (aiResult.name || '').slice(0, 50);
 
     // 원문 전체 텍스트를 description으로 사용
     aiResult.description = bodyText || aiResult.description || '';
