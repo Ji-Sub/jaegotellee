@@ -158,6 +158,9 @@ export async function onRequest(context) {
   const sellerLinks = extractSellerLinks(html);
 
   if (aiResult) {
+    // ogTitle이 있으면 우선 사용, 없으면 AI name (최대 50자)
+    aiResult.name = (ogTitle || aiResult.name || '').slice(0, 50);
+
     // 원문 전체 텍스트를 description으로 사용
     aiResult.description = bodyText || aiResult.description || '';
 

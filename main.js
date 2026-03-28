@@ -2459,6 +2459,13 @@ function renderCreate(_myToken) {
         </div>
         <input class="form-input" id="p-img" type="url" placeholder="https://... (직접 입력 또는 파일 업로드)" style="margin-top:8px;">
         <div id="p-img-picker" style="display:none;gap:8px;flex-wrap:wrap;margin-top:10px;"></div>
+        <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">
+          <div style="font-size:12px;color:#6b7280;margin-bottom:2px;">이미지 링크 직접 입력 (최대 5개)</div>
+          ${[1,2,3,4,5].map(i => `
+          <input class="form-input img-url-input" id="img-url-${i}" type="url"
+            placeholder="이미지 링크 ${i} — https://coresos.phinf.naver.net/..."
+            style="font-size:13px;padding:6px 10px;">`).join('')}
+        </div>
       </div>
       <div class="form-group"><label class="form-label">구매 링크</label><input class="form-input" id="p-link" type="url" placeholder="https://..."></div>
       <button type="button" id="btn-submit-post" class="btn btn-primary btn-full" onclick="submitPost()">등록 신청</button>
@@ -2484,8 +2491,14 @@ async function submitPost() {
     const cat = catEl ? String(catEl.value).trim() : '';
     const price = priceEl ? String(priceEl.value).trim() : '';
     const desc = descEl ? String(descEl.value).trim() : '';
-    const image_url = imgEl && imgEl.value.trim() ? imgEl.value.trim() : null;
     const purchase_link = linkEl && linkEl.value.trim() ? linkEl.value.trim() : null;
+
+    // 이미지 링크 입력란 1~5 수집 (빈 값 제외)
+    const extraImgUrls = [1,2,3,4,5]
+      .map(i => document.getElementById(`img-url-${i}`)?.value.trim())
+      .filter(Boolean);
+    // URL 입력란 첫 번째 > p-img 순으로 우선 사용
+    const image_url = extraImgUrls[0] || (imgEl && imgEl.value.trim() ? imgEl.value.trim() : null);
 
     if (!title || !cat || !price || !desc) {
       showToast('필수 항목을 모두 입력해 주세요');
