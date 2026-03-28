@@ -63,7 +63,9 @@ export async function onRequest(context) {
   console.log('[band.js] ogDesc  len:', ogDescription.length, '|', ogDescription.slice(0, 120));
   console.log('[band.js] bodyText len:', bodyText.length, '| preview:', bodyText.slice(0, 200));
 
-  const fullBody = (bodyText && bodyText.length > ogTitle.length) ? bodyText : (ogTitle || bodyText || '');
+  const fullBody = [bodyText, ogTitle]
+    .filter(t => t && t.length > 20 && !String(t).trim().endsWith('BAND Page'))
+    .sort((a, b) => b.length - a.length)[0] || ogTitle || bodyText || '';
   const aiInput = [
     fullBody      ? `게시글 본문:\n${fullBody}`       : '',
     ogDescription ? `게시글 요약: ${ogDescription}` : '',
@@ -552,21 +554,15 @@ function extractBodyText(html) {
     try {
       const nd = JSON.parse(ndMatch[1]);
       const candidate = findKoreanBody(nd, 0);
-      if (candidate && candidate.length > 20) return candidate;
-    } catch (_) { }
+      if (candidate && candidate.length > 50 && !candidate.trim().endsWith('BAND Page')) {
+        return candidate;
+      }
+    } catch (_) {}
   }
-
   const ogDesc = extractMeta(html, 'og:description');
-  if (ogDesc && ogDesc.length > 10) return ogDesc;
-
-  const paragraphs = [];
-  const pMatches = html.matchAll(/<p[^>]*>([\s\S]+?)<\/p>/gi);
-  for (const m of pMatches) {
-    const text = m[1].replace(/<[^>]+>/g, '').trim();
-    if (text.length > 15 && /[\uAC00-\uD7A3]/.test(text)) paragraphs.push(text);
-  }
-  if (paragraphs.length > 0) return paragraphs.join('\n');
-
+  if (ogDesc && ogDesc.length > 10 && !ogDesc.trim().endsWith('BAND Page')) return ogDesc;
+  const ogTitle = extractMeta(html, 'og:title');
+  if (ogTitle && ogTitle.length > 10 && !ogTitle.trim().endsWith('BAND Page')) return ogTitle;
   return '';
 }
 

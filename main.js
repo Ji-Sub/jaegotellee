@@ -2710,7 +2710,6 @@ window.fetchBandPost = async function () {
     } else if (data.ai_error) {
       showToast('⚠️ AI 분석 한도 초과: 이미지만 자동으로 불러옵니다.');
     } else {
-      if (titleEl && !titleEl.value.trim() && data.title) titleEl.value = data.title;
       const skipped = data.ai_skipped || '원인 불명';
       if (skipped.includes('OPENAI_API_KEY')) {
         showToast('⚠️ OpenAI API 키 미설정 — Cloudflare Pages 환경변수에 OPENAI_API_KEY를 추가해주세요.');
