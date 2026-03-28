@@ -2453,7 +2453,7 @@ function renderCreate(_myToken) {
         <input class="form-input" id="p-img-file" type="file" accept="image/*" multiple
           style="padding:6px;"
           onchange="uploadPostImages(this)">
-        <div id="p-img-upload-status" style="display:none;margin-top:6px;font-size:13px;color:#6b7280;display:flex;align-items:center;gap:6px;">
+        <div id="p-img-upload-status" style="display:none;margin-top:6px;font-size:13px;color:#6b7280;align-items:center;gap:6px;">
           <div class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;flex-shrink:0;"></div>
           <span>업로드 중...</span>
         </div>
