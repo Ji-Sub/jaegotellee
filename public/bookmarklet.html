@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>📌 밴드 → 히든딜 북마크릿</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', sans-serif; background: #f8fafc; color: #1e293b; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 24px; }
+    .card { background: #fff; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,.1); padding: 40px 36px; max-width: 560px; width: 100%; }
+    h1 { font-size: 24px; margin-bottom: 12px; }
+    .desc { color: #475569; font-size: 15px; line-height: 1.7; margin-bottom: 32px; }
+    .bookmarklet-btn {
+      display: inline-block;
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      color: #fff !important;
+      font-size: 17px;
+      font-weight: 700;
+      padding: 16px 32px;
+      border-radius: 12px;
+      text-decoration: none;
+      cursor: grab;
+      box-shadow: 0 4px 16px rgba(37,99,235,.35);
+      transition: transform .15s, box-shadow .15s;
+      user-select: none;
+    }
+    .bookmarklet-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(37,99,235,.45); }
+    .drag-area { text-align: center; background: #f0f7ff; border: 2px dashed #93c5fd; border-radius: 12px; padding: 32px 20px; margin-bottom: 32px; }
+    .drag-hint { margin-top: 14px; font-size: 13px; color: #64748b; }
+    .steps { list-style: none; counter-reset: step; }
+    .steps li { counter-increment: step; display: flex; gap: 14px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid #f1f5f9; font-size: 15px; line-height: 1.6; }
+    .steps li:last-child { border-bottom: none; }
+    .steps li::before { content: counter(step); min-width: 28px; height: 28px; border-radius: 50%; background: #2563eb; color: #fff; font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
+    .note { margin-top: 24px; background: #fef9c3; border-radius: 8px; padding: 14px 16px; font-size: 13px; color: #78350f; line-height: 1.6; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>📌 밴드 → 히든딜 북마크릿</h1>
+    <p class="desc">아래 버튼을 브라우저 즐겨찾기 바에 드래그하세요. 밴드 게시글 페이지에서 클릭하면 본문과 이미지가 히든딜 글쓰기로 자동 전송됩니다.</p>
+
+    <div class="drag-area">
+      <a class="bookmarklet-btn" href="javascript:(function(){var selectors=['.txt_wrap','.postText','.post_text','[data-viewname=&quot;DPostTextView&quot;]','.dPostBody','.writing_area','.se-main-container','article'];var body='';for(var i=0;i<selectors.length;i++){var el=document.querySelector(selectors[i]);if(el&&el.innerText&&el.innerText.trim().length>50){body=el.innerText.trim();break;}}if(!body){var divs=document.querySelectorAll('div,p,article,section');var best='';divs.forEach(function(d){var t=d.innerText||'';if(t.length>best.length&&t.length<10000&&/[\uAC00-\uD7A3]/.test(t))best=t;});body=best;}var images=[];document.querySelectorAll('img').forEach(function(img){var src=img.src||img.dataset.src||'';if(src&&/phinf|photo|cdn\.band|coresos/i.test(src)&&!/profile|avatar|icon|logo|emoji|sticker/i.test(src)){if(images.indexOf(src)===-1&&images.length<5)images.push(src);}});var bandUrl=location.href;var title=document.querySelector('meta[property=&quot;og:title&quot;]');title=title?title.content:'';var data=encodeURIComponent(JSON.stringify({body:body,images:images,url:bandUrl,title:title}));window.open('https://hiddendeal.kr/#/create?bandData='+data,'_blank');})();">
+        📌 히든딜 전송
+      </a>
+      <p class="drag-hint">⬆️ 이 버튼을 브라우저 북마크 바(즐겨찾기 바)로 드래그하세요</p>
+    </div>
+
+    <ol class="steps">
+      <li>위 버튼을 브라우저 즐겨찾기 바에 드래그해서 저장합니다.</li>
+      <li>밴드에서 히든딜에 등록할 게시글 페이지를 엽니다.</li>
+      <li>즐겨찾기 바의 <strong>"📌 히든딜 전송"</strong> 버튼을 클릭합니다. 히든딜 글쓰기 탭이 열리며 본문·이미지가 자동으로 채워집니다.</li>
+    </ol>
+
+    <div class="note">
+      💡 밴드에 로그인된 상태에서 사용해야 본문 전체가 수집됩니다.<br>
+      북마크릿은 현재 보고 있는 페이지의 DOM을 직접 읽으므로 보안 차단 없이 작동합니다.
+    </div>
+  </div>
+</body>
+</html>

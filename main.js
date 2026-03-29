@@ -479,7 +479,7 @@ function renderNav() {
       ${S.user ? `
         <span class="nav-user-chip">${esc(S.user.email.split('@')[0])}</span>
         ${(S.role === 'seller' || S.role === 'admin') ? `<button class="btn btn-outline btn-sm" onclick="navigateTo('create')">+ 글쓰기</button>` : `<button class="btn btn-ghost btn-sm" onclick="navigateTo('apply')">판매자 신청</button>`}
-        ${S.role === 'admin' ? `<button class="btn btn-outline btn-sm" onclick="navigateTo('admin')">⚙️ 관리</button>` : ''}
+        ${S.role === 'admin' ? `<button class="btn btn-outline btn-sm" onclick="navigateTo('admin')">⚙️ 관리</button><a href="/bookmarklet.html" target="_blank" class="btn btn-ghost btn-sm" title="밴드 북마크릿 설치">📌</a>` : ''}
         <button class="btn btn-ghost btn-sm" onclick="doLogout()">로그아웃</button>
       ` : `
         <button class="btn btn-ghost btn-sm" id="nav-login-btn" onclick="showLoginModal()">로그인</button>
@@ -2483,6 +2483,50 @@ function renderCreate(_myToken) {
       <div class="form-group"><label class="form-label">구매 링크</label><input class="form-input" id="p-link" type="url" placeholder="https://..."></div>
       <button type="button" id="btn-submit-post" class="btn btn-primary btn-full" onclick="submitPost()">등록 신청</button>
     </div>`;
+
+  // 북마크릿에서 전달된 bandData 파라미터 자동 채우기
+  setTimeout(() => {
+    const hashParts = window.location.hash.split('?');
+    if (hashParts.length < 2) return;
+    const params = new URLSearchParams(hashParts[1]);
+    const raw = params.get('bandData');
+    if (!raw) return;
+    try {
+      const bandData = JSON.parse(decodeURIComponent(raw));
+      if (bandData.body) {
+        const descEl = document.getElementById('p-desc');
+        if (descEl) descEl.value = bandData.body;
+        const bandBodyEl = document.getElementById('p-band-body');
+        if (bandBodyEl) {
+          bandBodyEl.value = bandData.body;
+          const wrap = document.getElementById('p-band-body-wrap');
+          if (wrap) wrap.style.display = 'block';
+        }
+      }
+      if (bandData.title) {
+        const titleEl = document.getElementById('p-title');
+        if (titleEl && !titleEl.value) titleEl.value = bandData.title;
+      }
+      if (bandData.images && bandData.images.length > 0) {
+        const imgEl = document.getElementById('p-img');
+        if (imgEl) imgEl.value = bandData.images[0];
+        bandData.images.forEach((url, i) => {
+          const el = document.getElementById('img-url-' + (i + 1));
+          if (el) el.value = url;
+        });
+      }
+      if (bandData.url) {
+        const linkEl = document.getElementById('p-link');
+        if (linkEl && !linkEl.value) linkEl.value = bandData.url;
+        const bandUrlEl = document.getElementById('p-band-url');
+        if (bandUrlEl) bandUrlEl.value = bandData.url;
+      }
+      showToast('📋 밴드에서 본문 ' + (bandData.body || '').length + '자, 이미지 ' + (bandData.images || []).length + '개를 가져왔습니다!');
+      history.replaceState(null, '', '#/create');
+    } catch (e) {
+      console.error('[bookmarklet data parse]', e);
+    }
+  }, 300);
 }
 
 async function submitPost() {
