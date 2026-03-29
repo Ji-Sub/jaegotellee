@@ -2635,8 +2635,8 @@ async function submitPost() {
     const extraImgUrls = [1,2,3,4,5]
       .map(i => document.getElementById(`img-url-${i}`)?.value.trim())
       .filter(Boolean);
-    // URL 입력란 첫 번째 > p-img 순으로 우선 사용
-    const image_url = extraImgUrls[0] || (imgEl && imgEl.value.trim() ? imgEl.value.trim() : null);
+    // p-img (대표 이미지 선택)가 최우선, 없으면 첫번째 슬롯 폴백
+    const image_url = (imgEl && imgEl.value.trim() ? imgEl.value.trim() : null) || extraImgUrls[0] || null;
 
     if (!title || !cat || !price || !desc) {
       showToast('필수 항목을 모두 입력해 주세요');
