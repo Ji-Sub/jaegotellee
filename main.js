@@ -1087,16 +1087,17 @@ function cardHtml(p) {
   const img = p.image_url
     ? `<img src="https://wsrv.nl/?url=${encodeURIComponent(p.image_url)}" alt="${esc(p.title)}" class="card-img" loading="lazy" referrerpolicy="no-referrer">`
     : `<div class="card-placeholder">${getCatEmoji(p.category)}</div>`;
+  const authorStr = p.users?.email ? esc(p.users.email.split('@')[0]) : '';
+  const timeStr   = p.created_at ? formatDate(p.created_at) : '';
   return `
     <div class="post-card" data-navigate="detail" data-param="${p.id}">
       <div class="card-img-wrap">
         ${img}
-        ${(p.like_count >= 10) ? `<span class="hot-badge">🔥 인기 히든딜</span>` : ''}
+        ${(p.like_count >= 10) ? `<span class="hot-badge">🔥 인기</span>` : ''}
       </div>
       <div class="card-body">
         <div class="card-cat">${esc(getCatLabel(p.category))}</div>
         <div class="card-title">${esc(p.title)}</div>
-        <div class="card-desc">${esc(p.description)}</div>
         <div class="card-price">${esc(formatPrice(p.price))}</div>
         <div class="card-meta">
           <button class="upvote-btn" data-upvote-target="${p.id}" data-action="toggleUpvote" data-param="${p.id}">
@@ -1104,6 +1105,8 @@ function cardHtml(p) {
           </button>
           <span>💬 ${p.comment_count || 0}</span>
           <span>👁 ${p.views || 0}</span>
+          ${authorStr ? `<span style="margin-left:auto;">${authorStr}</span>` : ''}
+          ${timeStr ? `<span>${timeStr}</span>` : ''}
         </div>
       </div>
     </div>`;
