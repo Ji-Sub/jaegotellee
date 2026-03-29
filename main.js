@@ -2441,6 +2441,19 @@ function renderCreate(_myToken) {
           <button type="button" id="btn-fetch-band" class="btn btn-primary btn-sm" onclick="fetchBandPost()" style="white-space:nowrap;padding:0 14px;">자동 불러오기</button>
         </div>
         <p style="margin:6px 0 0;font-size:11px;color:#666;">밴드 링크를 붙여넣고 버튼을 누르면 이미지·제목이 자동으로 채워집니다.</p>
+        <div style="margin-top:10px;">
+          <button type="button"
+            onclick="(function(btn){const el=document.getElementById('p-band-body-wrap');const open=el.style.display!=='none';el.style.display=open?'none':'block';btn.textContent=open?'📋 밴드 본문 직접 붙여넣기 (선택) ▼':'📋 밴드 본문 직접 붙여넣기 (선택) ▲';})(this)"
+            style="background:none;border:none;color:#1a6bbf;font-size:12px;font-weight:600;cursor:pointer;padding:0;">
+            📋 밴드 본문 직접 붙여넣기 (선택) ▼
+          </button>
+          <div id="p-band-body-wrap" style="display:none;margin-top:8px;">
+            <textarea id="p-band-body" class="form-input"
+              style="min-height:100px;font-size:13px;"
+              placeholder="밴드 앱/웹에서 게시글 본문을 복사해서 붙여넣으세요"></textarea>
+            <p style="margin:4px 0 0;font-size:11px;color:#888;">밴드 보안 정책으로 자동 추출이 제한될 수 있습니다. 본문이 잘리면 여기에 직접 붙여넣어 주세요.</p>
+          </div>
+        </div>
       </div>
       ` : ''}
 
@@ -2490,7 +2503,11 @@ async function submitPost() {
     const title = titleEl ? String(titleEl.value).trim() : '';
     const cat = catEl ? String(catEl.value).trim() : '';
     const price = priceEl ? String(priceEl.value).trim() : '';
-    const desc = descEl ? String(descEl.value).trim() : '';
+    // p-band-body 직접 입력값 우선, 없으면 p-desc 사용
+    const bandBodyEl = document.getElementById('p-band-body');
+    const bandBodyVal = bandBodyEl ? bandBodyEl.value.trim() : '';
+    if (bandBodyVal && descEl) descEl.value = bandBodyVal; // p-desc에도 반영
+    const desc = bandBodyVal || (descEl ? String(descEl.value).trim() : '');
     const purchase_link = linkEl && linkEl.value.trim() ? linkEl.value.trim() : null;
 
     // 이미지 링크 입력란 1~5 수집 (빈 값 제외)
@@ -2704,9 +2721,27 @@ window.fetchBandPost = async function () {
     if (data.ai) {
       if (titleEl && data.ai.name)        titleEl.value = data.ai.name;
       if (priceEl && data.ai.price)       priceEl.value = data.ai.price;
-      if (descEl  && data.ai.description) descEl.value  = data.ai.description;
-      const imgCount = originalImages.length;
-      showToast(`✅ AI 분석 완료! 이미지 ${imgCount}개, 내용을 확인 후 등록하세요.`);
+      // p-band-body 직접 입력값이 있으면 그것을 우선 사용
+      const bandBodyEl = document.getElementById('p-band-body');
+      const bandBodyVal = bandBodyEl ? bandBodyEl.value.trim() : '';
+      if (descEl && data.ai.description && !bandBodyVal) descEl.value = data.ai.description;
+
+      // description이 200자 미만이면 본문 잘림 경고 + 토글 자동 펼침
+      const finalDesc = bandBodyVal || (descEl ? descEl.value : '');
+      if (finalDesc.length < 200) {
+        const wrap = document.getElementById('p-band-body-wrap');
+        if (wrap) wrap.style.display = 'block';
+        if (bandBodyEl) {
+          bandBodyEl.style.border = '2px solid #f59e0b';
+          bandBodyEl.style.transition = 'border-color 0.3s';
+          setTimeout(() => { if (bandBodyEl) bandBodyEl.style.border = ''; }, 3000);
+          bandBodyEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+        showToast('⚠️ 밴드 보안 정책으로 본문이 잘렸습니다. 밴드에서 본문을 복사해서 아래에 붙여넣어 주세요.');
+      } else {
+        const imgCount = originalImages.length;
+        showToast(`✅ AI 분석 완료! 이미지 ${imgCount}개, 내용을 확인 후 등록하세요.`);
+      }
     } else if (data.ai_error) {
       showToast('⚠️ AI 분석 한도 초과: 이미지만 자동으로 불러옵니다.');
     } else {
