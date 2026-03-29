@@ -3,6 +3,34 @@
 // + DALL-E로 AI 썸네일 생성 → Cloudflare R2에 업로드
 // 환경변수: OPENAI_API_KEY, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT, R2_PUBLIC_URL
 
+// ── UA 상수 ──────────────────────────────────────────────────────────────────
+const UA_NAVER  = 'Mozilla/5.0 (compatible; Yeti/1.1; +http://naver.me/bot)';
+const UA_GOOGLE = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
+const UA_MOBILE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+
+async function fetchWithUA(url, ua) {
+  const res = await fetch(url, {
+    redirect: 'follow',
+    headers: {
+      'User-Agent': ua,
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'ko-KR,ko;q=0.9',
+    },
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.text();
+}
+
+function toMobileUrl(url) {
+  return url.replace('://www.band.us', '://m.band.us').replace('://band.us', '://m.band.us');
+}
+
+function isBodySufficient(bodyText, ogTitle) {
+  if (!bodyText || bodyText.length < 50) return false;
+  if (isNoiseText(bodyText)) return false;
+  return bodyText.length > (ogTitle || '').length + 50;
+}
+
 export async function onRequest(context) {
   const requestUrl = new URL(context.request.url);
   const targetUrl = requestUrl.searchParams.get('url');
@@ -28,21 +56,53 @@ export async function onRequest(context) {
     return json({ error: '밴드(band.us) URL만 지원합니다.' }, 403);
   }
 
-  // ── 1. 밴드 페이지 HTML 가져오기 ────────────────────────────────────────
+  // ── 1. 밴드 페이지 HTML 가져오기 (3단계 시도) ──────────────────────────────
   let html;
+  const attemptLog = {};
   try {
-    const res = await fetch(targetUrl, {
-      redirect: 'follow',
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8',
-        'Referer': 'https://www.band.us/',
-        'Cache-Control': 'no-cache',
-      },
-    });
-    if (!res.ok) return json({ error: `밴드 페이지 접근 실패 (${res.status})` }, res.status);
-    html = await res.text();
+    // 1차: 네이버봇 UA
+    let h1, bt1, ot1;
+    try {
+      h1  = await fetchWithUA(targetUrl, UA_NAVER);
+      ot1 = extractMeta(h1, 'og:title') || '';
+      bt1 = extractBodyText(h1, ot1);
+      attemptLog.attempt_1_naver = { html_length: h1.length, body_length: bt1.length, sufficient: isBodySufficient(bt1, ot1) };
+      console.log('[band.js] 1차(Naver) body_length:', bt1.length, 'sufficient:', isBodySufficient(bt1, ot1));
+    } catch (e) { attemptLog.attempt_1_naver = { error: e.message }; }
+
+    if (h1 && isBodySufficient(bt1, ot1)) {
+      html = h1;
+    } else {
+      // 2차: 구글봇 UA
+      let h2, bt2, ot2;
+      try {
+        h2  = await fetchWithUA(targetUrl, UA_GOOGLE);
+        ot2 = extractMeta(h2, 'og:title') || '';
+        bt2 = extractBodyText(h2, ot2);
+        attemptLog.attempt_2_google = { html_length: h2.length, body_length: bt2.length, sufficient: isBodySufficient(bt2, ot2) };
+        console.log('[band.js] 2차(Google) body_length:', bt2.length, 'sufficient:', isBodySufficient(bt2, ot2));
+      } catch (e) { attemptLog.attempt_2_google = { error: e.message }; }
+
+      if (h2 && isBodySufficient(bt2, ot2)) {
+        html = h2;
+      } else {
+        // 3차: 모바일 UA (m.band.us)
+        const mobileUrl = toMobileUrl(targetUrl);
+        let h3, bt3, ot3;
+        try {
+          h3  = await fetchWithUA(mobileUrl, UA_MOBILE);
+          ot3 = extractMeta(h3, 'og:title') || '';
+          bt3 = extractBodyText(h3, ot3);
+          attemptLog.attempt_3_mobile = { html_length: h3.length, body_length: bt3.length, sufficient: isBodySufficient(bt3, ot3), url_used: mobileUrl };
+          console.log('[band.js] 3차(Mobile) body_length:', bt3.length, 'sufficient:', isBodySufficient(bt3, ot3));
+        } catch (e) { attemptLog.attempt_3_mobile = { error: e.message, url_used: mobileUrl }; }
+
+        // 어느 쪽이든 가장 긴 HTML 사용 (폴백)
+        html = [h3, h2, h1].find(Boolean) || null;
+      }
+    }
+
+    if (!html) return json({ error: '밴드 페이지를 가져오지 못했습니다.' }, 502);
   } catch (err) {
     return json({ error: `네트워크 오류: ${err.message}` }, 500);
   }
@@ -76,6 +136,7 @@ export async function onRequest(context) {
       og_description: { value: ogDescDbg, length: ogDescDbg.length },
       html_snippet: bodyInner.slice(0, 5000),
       html_text_sample: htmlTextSample,
+      fetch_attempts: attemptLog,
     });
   }
 
