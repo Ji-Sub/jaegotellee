@@ -47,7 +47,68 @@ export async function onRequest(context) {
     return json({ error: `네트워크 오류: ${err.message}` }, 500);
   }
 
-  // ── 2. 이미지 최대 3개 추출 ─────────────────────────────────────────────
+  // ── 2. debug=1 분기 ─────────────────────────────────────────────────────
+  const isDebug = requestUrl.searchParams.get('debug') === '1';
+  if (isDebug) {
+    const ogTitleDbg       = extractMeta(html, 'og:title')       || '';
+    const ogDescriptionDbg = extractMeta(html, 'og:description') || '';
+    const ndMatch = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]+?)<\/script>/i);
+    let ndRaw = ndMatch ? ndMatch[1].slice(0, 3000) : '(not found)';
+    let pagePropsDbg = null;
+    let sigResult = null;
+    let dfsCandidates = [];
+    if (ndMatch) {
+      try {
+        const nd = JSON.parse(ndMatch[1]);
+        // pageProps 구조
+        const pp = nd?.props?.pageProps || nd?.pageProps || null;
+        if (pp) {
+          pagePropsDbg = {};
+          for (const [k, v] of Object.entries(pp)) {
+            if (typeof v === 'string') {
+              pagePropsDbg[k] = { type: 'string', length: v.length, preview: v.slice(0, 200) };
+            } else if (v && typeof v === 'object') {
+              pagePropsDbg[k] = { type: 'object', keys: Object.keys(v).slice(0, 20) };
+            } else {
+              pagePropsDbg[k] = { type: typeof v };
+            }
+          }
+        }
+        // 시그니처 매칭
+        const sig = ogTitleDbg.slice(0, 50);
+        const encoded = JSON.stringify(sig).slice(1, -1);
+        const idx = ndMatch[1].indexOf(encoded);
+        if (idx !== -1) {
+          let start = ndMatch[1].lastIndexOf('"', idx - 1) + 1;
+          let end   = ndMatch[1].indexOf('"', idx + encoded.length);
+          if (end > start) {
+            try {
+              const raw = ndMatch[1].slice(start, end);
+              const decoded = JSON.parse('"' + raw + '"');
+              sigResult = { found: true, length: decoded.length, preview: decoded.slice(0, 300) };
+            } catch (e) { sigResult = { found: true, parse_error: e.message }; }
+          }
+        } else { sigResult = { found: false }; }
+        // DFS 전체 탐색
+        dfsCandidates = collectAllStrings(nd, ogTitleDbg).slice(0, 20);
+      } catch (e) { ndRaw = '(parse error: ' + e.message + ')'; }
+    }
+    // HTML 본문 직접 추출
+    const htmlBodyMatch = html.match(/class=["'][^"']*(?:postText|post-content|txt_wrap|post_body)[^"']*["'][^>]*>([\s\S]{20,2000}?)<\/(?:div|p|section)/i);
+    const htmlBodyPreview = htmlBodyMatch ? htmlBodyMatch[1].replace(/<[^>]+>/g, '').slice(0, 500) : '(not found)';
+    return json({
+      debug: true,
+      og_title: { value: ogTitleDbg, length: ogTitleDbg.length },
+      og_description: { value: ogDescriptionDbg, length: ogDescriptionDbg.length },
+      next_data_raw: ndRaw,
+      page_props: pagePropsDbg,
+      signature_match: sigResult,
+      dfs_candidates: dfsCandidates,
+      html_body_extract: htmlBodyPreview,
+    });
+  }
+
+  // ── 3. 이미지 최대 3개 추출 ─────────────────────────────────────────────
   const images = extractImages(html);
   if (images.length === 0) {
     return json({ error: '이미지를 찾을 수 없습니다. 비공개 게시글이거나 지원하지 않는 페이지입니다.' }, 404);
@@ -56,8 +117,8 @@ export async function onRequest(context) {
   const ogTitle       = extractMeta(html, 'og:title')       || '';
   const ogDescription = extractMeta(html, 'og:description') || '';
 
-  // ── 3. 본문 텍스트 추출 ─────────────────────────────────────────────────
-  const bodyText = extractBodyText(html);
+  // ── 4. 본문 텍스트 추출 ─────────────────────────────────────────────────
+  const bodyText = extractBodyText(html, ogTitle);
 
   console.log('[band.js] ogTitle len:', ogTitle.length, '|', ogTitle.slice(0, 80));
   console.log('[band.js] ogDesc  len:', ogDescription.length, '|', ogDescription.slice(0, 120));
@@ -548,40 +609,110 @@ function collectPhotoUrls(obj, addImage, depth) {
   }
 }
 
-function extractBodyText(html) {
+function isNoiseText(text) {
+  if (!text) return true;
+  const t = String(text).trim();
+  if (t.endsWith('BAND Page')) return true;
+  if (/^https?:\/\/\S+$/.test(t)) return true;
+  if (t.length < 100 && /BAND|밴드/i.test(t)) return true;
+  return false;
+}
+
+// DFS로 모든 문자열 후보 수집 (debug 및 본문 탐색용)
+function collectAllStrings(obj, ogTitle, depth = 0, path = '', results = []) {
+  if (depth > 20 || !obj || typeof obj !== 'object') return results;
+  for (const [key, val] of Object.entries(obj)) {
+    const p = path ? `${path}.${key}` : key;
+    if (typeof val === 'string' && val.length >= 30 && /[\uAC00-\uD7A3]/.test(val) && !isNoiseText(val)) {
+      results.push({ key: p, length: val.length, preview: val.slice(0, 300), longerThanOgTitle: val.length > ogTitle.length });
+    } else if (val && typeof val === 'object') {
+      collectAllStrings(val, ogTitle, depth + 1, p, results);
+    }
+  }
+  results.sort((a, b) => b.length - a.length);
+  return results;
+}
+
+function extractBodyText(html, ogTitle = '') {
   const ndMatch = html.match(/<script[^>]+id=["']__NEXT_DATA__["'][^>]*>([\s\S]+?)<\/script>/i);
+
   if (ndMatch) {
+    // ── 1단계: 시그니처 매칭 ──────────────────────────────────────────────
+    const sig = ogTitle.slice(0, 50);
+    if (sig.length >= 10) {
+      try {
+        const encoded = JSON.stringify(sig).slice(1, -1);
+        const raw = ndMatch[1];
+        const idx = raw.indexOf(encoded);
+        if (idx !== -1) {
+          let start = raw.lastIndexOf('"', idx - 1) + 1;
+          let end   = raw.indexOf('"', idx + encoded.length);
+          // 이스케이프된 따옴표 건너뛰기
+          while (end !== -1 && raw[end - 1] === '\\') end = raw.indexOf('"', end + 1);
+          if (end > start) {
+            const decoded = JSON.parse('"' + raw.slice(start, end) + '"');
+            if (decoded.length > ogTitle.length && !isNoiseText(decoded)) {
+              console.log('[band.js] extractBodyText: 시그니처 매칭 성공, len:', decoded.length);
+              return decoded;
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    // ── 2단계: DFS 전체 탐색 ──────────────────────────────────────────────
     try {
       const nd = JSON.parse(ndMatch[1]);
-      const candidate = findKoreanBody(nd, 0);
-      if (candidate && candidate.length > 50 && !candidate.trim().endsWith('BAND Page')) {
-        return candidate;
+      const candidates = collectAllStrings(nd, ogTitle);
+      // ogTitle보다 긴 후보 중 가장 긴 것
+      const longer = candidates.filter(c => c.longerThanOgTitle);
+      if (longer.length > 0) {
+        console.log('[band.js] extractBodyText: DFS 긴 후보, key:', longer[0].key, 'len:', longer[0].length);
+        return longer[0].preview.length === longer[0].length
+          ? longer[0].preview  // preview가 전체일 때
+          : extractFullString(ndMatch[1], longer[0].preview.slice(0, 30)); // 전체 추출 시도
+      }
+      // BODY_KEYS 후보
+      const BODY_KEYS = new Set(['body', 'content', 'text', 'caption', 'message', 'postbody', 'post_body']);
+      const byKey = candidates.filter(c => BODY_KEYS.has(c.key.split('.').pop().toLowerCase()));
+      if (byKey.length > 0) {
+        console.log('[band.js] extractBodyText: DFS BODY_KEY 후보, key:', byKey[0].key);
+        return extractFullString(ndMatch[1], byKey[0].preview.slice(0, 30)) || byKey[0].preview;
+      }
+      // 최장 후보
+      if (candidates.length > 0) {
+        console.log('[band.js] extractBodyText: DFS 최장 후보, len:', candidates[0].length);
+        return extractFullString(ndMatch[1], candidates[0].preview.slice(0, 30)) || candidates[0].preview;
       }
     } catch (_) {}
   }
+
+  // ── 3단계: HTML 본문 직접 추출 ───────────────────────────────────────────
+  const htmlBodyMatch = html.match(/class=["'][^"']*(?:postText|post-content|txt_wrap|post_body)[^"']*["'][^>]*>([\s\S]{20,5000}?)<\/(?:div|p|section)/i);
+  if (htmlBodyMatch) {
+    const text = htmlBodyMatch[1].replace(/<[^>]+>/g, '').trim();
+    if (text.length > 20 && !isNoiseText(text)) return text;
+  }
+
+  // ── 4단계: og:description → og:title 폴백 ───────────────────────────────
   const ogDesc = extractMeta(html, 'og:description');
-  if (ogDesc && ogDesc.length > 10 && !ogDesc.trim().endsWith('BAND Page')) return ogDesc;
-  const ogTitle = extractMeta(html, 'og:title');
-  if (ogTitle && ogTitle.length > 10 && !ogTitle.trim().endsWith('BAND Page')) return ogTitle;
+  if (ogDesc && ogDesc.length > 10 && !isNoiseText(ogDesc)) return ogDesc;
+  if (ogTitle && ogTitle.length > 10 && !isNoiseText(ogTitle)) return ogTitle;
   return '';
 }
 
-function findKoreanBody(obj, depth) {
-  if (depth > 15 || !obj || typeof obj !== 'object') return null;
-  const BODY_KEYS = new Set(['body', 'content', 'text', 'caption', 'message', 'postBody', 'post_body']);
-  let best = null;
-
-  for (const [key, val] of Object.entries(obj)) {
-    if (typeof val === 'string' && val.length > 50 && /[\uAC00-\uD7A3]/.test(val)) {
-      if (BODY_KEYS.has(key.toLowerCase()) && val.length > (best?.length || 0)) {
-        best = val;
-      }
-    } else if (val && typeof val === 'object') {
-      const found = findKoreanBody(val, depth + 1);
-      if (found && found.length > (best?.length || 0)) best = found;
-    }
-  }
-  return best;
+// raw JSON 문자열에서 특정 시작 문자열로 전체 값 추출
+function extractFullString(rawJson, startFragment) {
+  try {
+    const encoded = JSON.stringify(startFragment).slice(1, -1);
+    const idx = rawJson.indexOf(encoded);
+    if (idx === -1) return null;
+    let start = rawJson.lastIndexOf('"', idx - 1) + 1;
+    let end   = rawJson.indexOf('"', idx + encoded.length);
+    while (end !== -1 && rawJson[end - 1] === '\\') end = rawJson.indexOf('"', end + 1);
+    if (end > start) return JSON.parse('"' + rawJson.slice(start, end) + '"');
+  } catch (_) {}
+  return null;
 }
 
 function json(data, status = 200) {
