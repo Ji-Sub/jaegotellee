@@ -718,6 +718,73 @@ function renderLoadMoreButton() {
 // ─────────────────────────────────────────────
 // HOT DEAL FETCHING
 // ─────────────────────────────────────────────
+function collectPostDetailImages(post) {
+  const allImages = [];
+  if (!post) return allImages;
+  const main = post.image_url && String(post.image_url).trim();
+  if (main) allImages.push(main);
+  if (post.extra_images) {
+    String(post.extra_images).split(',').forEach(u => {
+      const trimmed = u.trim();
+      if (trimmed && !allImages.includes(trimmed)) allImages.push(trimmed);
+    });
+  }
+  return allImages;
+}
+
+function buildPostDetailImagesHtml(post) {
+  const allImages = collectPostDetailImages(post);
+  const n = allImages.length;
+  if (n > 1) {
+    return `
+      <div class="img-slider" id="img-slider">
+        <div class="slider-track">
+          ${allImages.map((url, i) => `
+            <img src="https://wsrv.nl/?url=${encodeURIComponent(url)}"
+              class="slider-img${i === 0 ? ' active' : ''}"
+              data-index="${i}"
+              alt=""
+              referrerpolicy="no-referrer"
+              loading="${i === 0 ? 'eager' : 'lazy'}">
+          `).join('')}
+        </div>
+        <button type="button" class="slider-btn slider-prev" aria-label="이전" onclick="slideImg(-1)">‹</button>
+        <button type="button" class="slider-btn slider-next" aria-label="다음" onclick="slideImg(1)">›</button>
+        <div class="slider-counter">1 / ${n}</div>
+        <div class="slider-dots">
+          ${allImages.map((_, i) => `<span class="dot${i === 0 ? ' active' : ''}" role="button" tabindex="0" onclick="slideImgTo(${i})"></span>`).join('')}
+        </div>
+      </div>`;
+  }
+  if (n === 1) {
+    return `<img src="https://wsrv.nl/?url=${encodeURIComponent(allImages[0])}"
+      class="detail-single-img"
+      referrerpolicy="no-referrer" loading="lazy" alt="">`;
+  }
+  return '';
+}
+
+window._sliderIndex = 0;
+window.slideImg = function (dir) {
+  const imgs = document.querySelectorAll('#img-slider .slider-img');
+  if (imgs.length === 0) return;
+  let idx = window._sliderIndex + dir;
+  if (idx < 0) idx = imgs.length - 1;
+  if (idx >= imgs.length) idx = 0;
+  window.slideImgTo(idx);
+};
+
+window.slideImgTo = function (i) {
+  const imgs = document.querySelectorAll('#img-slider .slider-img');
+  const dots = document.querySelectorAll('#img-slider .dot');
+  const counter = document.querySelector('#img-slider .slider-counter');
+  if (imgs.length === 0 || i < 0 || i >= imgs.length) return;
+  window._sliderIndex = i;
+  imgs.forEach((img, j) => img.classList.toggle('active', j === i));
+  dots.forEach((dot, j) => dot.classList.toggle('active', j === i));
+  if (counter) counter.textContent = (i + 1) + ' / ' + imgs.length;
+};
+
 async function fetchHotDeals() {
   try {
     const res = await fetch(`/api/hotdeal?page=${S.page}`);
@@ -899,10 +966,7 @@ async function renderHotdealDetail(myToken) {
     const isWafBlocked = wafHitByHtml || wafHitByContent;
 
     if (isWafBlocked) {
-      if (post.description && post.description.trim()) {
-        contentHtml = post.description.replace(/\n/g, '<br>');
-      } else {
-        contentHtml = `
+      contentHtml = `
           <div style="text-align:center; padding: 40px 20px; background: var(--bg-secondary, #f8fafc); border-radius: 12px;">
             <div style="font-size: 40px; margin-bottom: 16px;">🛡️</div>
             <h3 style="margin-bottom: 8px; color: var(--text-main);">보안 정책 안내</h3>
@@ -912,7 +976,6 @@ async function renderHotdealDetail(myToken) {
             </p>
           </div>
         `;
-      }
     } else if (!contentHtml || contentHtml.length < 20) {
       contentHtml = `
         <div style="text-align:center;">
@@ -933,12 +996,7 @@ async function renderHotdealDetail(myToken) {
         <div class="detail-price">${esc(formatPrice(price))}</div>
         <div class="comments-section" style="padding-top:20px; border-bottom: 1px solid var(--border-color); margin-bottom: 30px; padding-bottom: 30px;">
           <div class="detail-desc" style="white-space:pre-wrap; overflow:hidden; width:100%; max-width:100%;">
-            ${post.image_url ? `
-              <img src="https://wsrv.nl/?url=${encodeURIComponent(post.image_url)}"
-                referrerpolicy="no-referrer"
-                loading="lazy"
-                style="width:100%; max-width:500px; height:auto; border-radius:12px; margin-bottom:20px; display:block;">
-            ` : ''}
+            ${buildPostDetailImagesHtml({ image_url: ogImage || '', extra_images: null })}
             ${contentHtml}
           </div>
         </div>
@@ -947,6 +1005,7 @@ async function renderHotdealDetail(myToken) {
         </div>
       </div>
     `;
+    window._sliderIndex = 0;
   } catch (e) {
     if (S.renderToken !== myToken) return;
     const msg = e && typeof e.message === 'string' ? e.message : String(e);
@@ -1322,12 +1381,7 @@ async function renderDetail(myToken) {
         </div>
 
         <div class="detail-desc" style="white-space:pre-wrap; overflow:hidden; width:100%; max-width:100%;">
-          ${post.image_url ? `
-            <img src="https://wsrv.nl/?url=${encodeURIComponent(post.image_url)}"
-              referrerpolicy="no-referrer"
-              loading="lazy"
-              style="width:100%; max-width:500px; height:auto; border-radius:12px; margin-bottom:20px; display:block;">
-          ` : ''}
+          ${buildPostDetailImagesHtml(post)}
           ${contentHtml}
         </div>
 
@@ -1365,6 +1419,8 @@ async function renderDetail(myToken) {
           </div>
         </div>
       </div>`;
+
+    window._sliderIndex = 0;
 
     if (S.renderToken !== myToken) return;
     const countEl = document.getElementById('detail-comment-count');
@@ -1990,6 +2046,10 @@ async function openEditPostModal(postId) {
         <input class="form-input" id="edit-post-img" type="url" value="${esc(post.image_url || '')}">
       </div>
       <div class="form-group">
+        <label class="form-label">추가 이미지 (쉼표 구분)</label>
+        <textarea class="form-input" id="edit-post-extra-images" style="min-height:72px;" placeholder="이미지 URL을 쉼표로 구분하여 입력">${esc(post.extra_images || '')}</textarea>
+      </div>
+      <div class="form-group">
         <label class="form-label">구매 링크</label>
         <input class="form-input" id="edit-post-link" type="url" value="${esc(post.purchase_link || '')}">
       </div>
@@ -2012,6 +2072,7 @@ async function saveEditPost(postId) {
   const price    = document.getElementById('edit-post-price')?.value.trim();
   const desc     = document.getElementById('edit-post-desc')?.value.trim();
   const imgUrl   = document.getElementById('edit-post-img')?.value.trim();
+  const extraImages = document.getElementById('edit-post-extra-images')?.value.trim() || null;
   const link     = document.getElementById('edit-post-link')?.value.trim();
   const approved = document.getElementById('edit-post-approved')?.checked ?? false;
 
@@ -2027,6 +2088,7 @@ async function saveEditPost(postId) {
       price: price || null,
       description: desc || null,
       image_url: imgUrl || null,
+      extra_images: extraImages,
       purchase_link: link || null,
       approved,
     }).eq('id', postId);
@@ -2638,6 +2700,11 @@ async function submitPost() {
     // p-img (대표 이미지 선택)가 최우선, 없으면 첫번째 슬롯 폴백
     const image_url = (imgEl && imgEl.value.trim() ? imgEl.value.trim() : null) || extraImgUrls[0] || null;
 
+    const extraUrls = [1, 2, 3, 4, 5]
+      .map(i => document.getElementById(`img-url-${i}`)?.value.trim())
+      .filter(u => u && u !== image_url);
+    const extra_images = extraUrls.length > 0 ? extraUrls.join(',') : null;
+
     if (!title || !cat || !price || !desc) {
       showToast('필수 항목을 모두 입력해 주세요');
       return;
@@ -2658,6 +2725,7 @@ async function submitPost() {
       price: String(price),
       description: String(desc),
       image_url,
+      extra_images,
       purchase_link,
       is_hot: false,
       approved: S.role === 'admin',
