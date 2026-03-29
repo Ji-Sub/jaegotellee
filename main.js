@@ -2582,7 +2582,7 @@ async function submitPost() {
       image_url,
       purchase_link,
       is_hot: false,
-      approved: false,
+      approved: S.role === 'admin',
       views: 0,
       comment_count: 0,
       user_id: S.user.id
@@ -2612,7 +2612,9 @@ async function submitPost() {
       throw new Error(`DB 저장 실패 (${res.status}): ${errText}`);
     }
 
-    showToast('등록 신청 완료! 관리자 승인 후 공개됩니다.');
+    showToast(S.role === 'admin'
+      ? '등록이 완료되었습니다. 바로 피드에 공개됩니다.'
+      : '등록 신청 완료! 관리자 승인 후 공개됩니다.');
     if (titleEl) titleEl.value = '';
     if (catEl) catEl.selectedIndex = 0;
     if (priceEl) priceEl.value = '';
