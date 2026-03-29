@@ -2406,6 +2406,74 @@ function getLeafCategories(items = CATEGORIES, forbiddenIds = [], ancestorLabels
   return leaves;
 }
 
+// 딜 등록 폼 — 대표 이미지·링크 슬롯 미리보기
+window.refreshMainImgPreview = function () {
+  const wrap = document.getElementById('main-img-preview');
+  const imgInp = document.getElementById('p-img');
+  if (!wrap) return;
+  wrap.innerHTML = '';
+  const u = imgInp && imgInp.value.trim();
+  if (!u) {
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = 'block';
+  const proxied = u.startsWith('/') ? u : ('https://wsrv.nl/?url=' + encodeURIComponent(u));
+  const img = document.createElement('img');
+  img.src = proxied;
+  img.alt = '';
+  img.style.cssText = 'max-width:200px;width:100%;height:auto;border-radius:12px;display:block;border:1px solid var(--border-light);';
+  img.loading = 'lazy';
+  img.referrerPolicy = 'no-referrer';
+  wrap.appendChild(img);
+};
+
+window.selectCreateImgFromSlot = function (slot) {
+  const el = document.getElementById('img-url-' + slot);
+  if (!el || !el.value.trim()) return;
+  const pImg = document.getElementById('p-img');
+  if (pImg) pImg.value = el.value.trim();
+  if (typeof window.refreshImagePreviews === 'function') window.refreshImagePreviews();
+  showToast('대표 이미지가 변경되었습니다');
+};
+
+window.refreshImagePreviews = function () {
+  if (typeof window.refreshMainImgPreview === 'function') window.refreshMainImgPreview();
+  const area = document.getElementById('img-preview-area');
+  if (!area) return;
+  area.innerHTML = '';
+  const mainVal = (document.getElementById('p-img') && document.getElementById('p-img').value.trim()) || '';
+  for (let i = 1; i <= 5; i++) {
+    const inp = document.getElementById('img-url-' + i);
+    if (!inp) continue;
+    const url = inp.value.trim();
+    if (!url) continue;
+    const border = url === mainVal ? '3px solid #2563eb' : '3px solid #ddd';
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:inline-block;margin:6px;position:relative;border:' + border + ';border-radius:8px;overflow:hidden;';
+    const img = document.createElement('img');
+    img.src = url.startsWith('/') ? url : ('https://wsrv.nl/?url=' + encodeURIComponent(url));
+    img.alt = '';
+    img.style.cssText = 'width:80px;height:80px;object-fit:cover;display:block;';
+    img.loading = 'lazy';
+    img.referrerPolicy = 'no-referrer';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = '선택';
+    btn.style.cssText = 'position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.7);color:#fff;border:none;font-size:11px;padding:3px;cursor:pointer;';
+    (function (s) {
+      btn.onclick = function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        window.selectCreateImgFromSlot(s);
+      };
+    })(i);
+    wrap.appendChild(img);
+    wrap.appendChild(btn);
+    area.appendChild(wrap);
+  }
+};
+
 function renderCreate(_myToken) {
   const el = document.getElementById('content');
   if (!S.user) {
@@ -2469,15 +2537,20 @@ function renderCreate(_myToken) {
           <div class="spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;flex-shrink:0;"></div>
           <span>업로드 중...</span>
         </div>
-        <input class="form-input" id="p-img" type="url" placeholder="https://... (직접 입력 또는 파일 업로드)" style="margin-top:8px;">
+        <div id="main-img-preview" style="margin-top:8px;display:none;"></div>
+        <input class="form-input" id="p-img" type="url" placeholder="https://... (직접 입력 또는 파일 업로드)" style="margin-top:8px;" oninput="refreshImagePreviews()">
         <div id="p-img-picker" style="display:none;gap:8px;flex-wrap:wrap;margin-top:10px;"></div>
+        ${S.role === 'admin' ? `
         <div style="margin-top:10px;display:flex;flex-direction:column;gap:6px;">
           <div style="font-size:12px;color:#6b7280;margin-bottom:2px;">이미지 링크 직접 입력 (최대 5개)</div>
           ${[1,2,3,4,5].map(i => `
           <input class="form-input img-url-input" id="img-url-${i}" type="url"
             placeholder="이미지 링크 ${i} — https://coresos.phinf.naver.net/..."
-            style="font-size:13px;padding:6px 10px;">`).join('')}
+            style="font-size:13px;padding:6px 10px;"
+            oninput="refreshImagePreviews()" onchange="refreshImagePreviews()">`).join('')}
+          <div id="img-preview-area" style="display:flex;flex-wrap:wrap;margin-top:4px;min-height:0;"></div>
         </div>
+        ` : ''}
       </div>
       <div class="form-group"><label class="form-label">구매 링크</label><input class="form-input" id="p-link" type="url" placeholder="https://..."></div>
       <button type="button" id="btn-submit-post" class="btn btn-primary btn-full" onclick="submitPost()">등록 신청</button>
@@ -2522,10 +2595,15 @@ function renderCreate(_myToken) {
       }
       showToast('📋 밴드에서 본문 ' + (bandData.body || '').length + '자, 이미지 ' + (bandData.images || []).length + '개를 가져왔습니다!');
       history.replaceState(null, '', '#/create');
+      if (typeof window.refreshImagePreviews === 'function') window.refreshImagePreviews();
     } catch (e) {
       console.error('[bookmarklet data parse]', e);
     }
   }, 300);
+
+  setTimeout(function () {
+    if (typeof window.refreshImagePreviews === 'function') window.refreshImagePreviews();
+  }, 500);
 }
 
 async function submitPost() {
@@ -2681,11 +2759,13 @@ window.uploadPostImages = async function (input) {
             document.getElementById('p-img').value=this.dataset.url;
             document.getElementById('p-img-picker').querySelectorAll('img').forEach(el=>el.style.borderColor='#ddd');
             this.style.borderColor='var(--primary,#2563eb)';
+            if(typeof refreshImagePreviews==='function')refreshImagePreviews();
           ">
       `).join('');
     }
 
     showToast(`이미지 ${urls.length}장 업로드 완료`);
+    if (typeof window.refreshImagePreviews === 'function') window.refreshImagePreviews();
   } catch (e) {
     console.error('[uploadPostImages]', e);
     showToast('이미지 업로드 실패: ' + (e?.message || String(e)));
@@ -2752,6 +2832,7 @@ window.fetchBandPost = async function () {
               document.getElementById('p-img-picker').querySelectorAll('img')
                 .forEach(el => el.style.borderColor='#ddd');
               this.style.borderColor='var(--primary, #2563eb)';
+              if(typeof refreshImagePreviews==='function')refreshImagePreviews();
             ">
         `;
         }).join('');
@@ -2805,6 +2886,7 @@ window.fetchBandPost = async function () {
     showToast('오류: ' + e.message);
   } finally {
     if (btn) { btn.disabled = false; btn.innerHTML = originalHtml; }
+    if (typeof window.refreshImagePreviews === 'function') window.refreshImagePreviews();
   }
 };
 
