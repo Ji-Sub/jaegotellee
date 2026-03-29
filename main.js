@@ -1087,8 +1087,6 @@ function cardHtml(p) {
   const img = p.image_url
     ? `<img src="https://wsrv.nl/?url=${encodeURIComponent(p.image_url)}" alt="${esc(p.title)}" class="card-img" loading="lazy" referrerpolicy="no-referrer">`
     : `<div class="card-placeholder">${getCatEmoji(p.category)}</div>`;
-  const authorStr = p.users?.email ? esc(p.users.email.split('@')[0]) : '';
-  const timeStr   = p.created_at ? formatDate(p.created_at) : '';
   return `
     <div class="post-card" data-navigate="detail" data-param="${p.id}">
       <div class="card-img-wrap">
@@ -1105,8 +1103,6 @@ function cardHtml(p) {
           </button>
           <span>💬 ${p.comment_count || 0}</span>
           <span>👁 ${p.views || 0}</span>
-          ${authorStr ? `<span style="margin-left:auto;">${authorStr}</span>` : ''}
-          ${timeStr ? `<span>${timeStr}</span>` : ''}
         </div>
       </div>
     </div>`;
